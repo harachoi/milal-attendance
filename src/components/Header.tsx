@@ -1,5 +1,4 @@
 import { useAttendance } from "../store/AttendanceStore";
-import { formatDateKorean } from "../utils/format";
 
 interface Props {
   totalYouth: number;
@@ -39,9 +38,6 @@ export default function Header({
               onChange={(e) => setDate(e.target.value)}
               className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-700"
             />
-            <span className="text-xs text-slate-500">
-              {formatDateKorean(state.date)}
-            </span>
           </div>
         </div>
         <div className="flex flex-wrap justify-end gap-1.5">
@@ -88,7 +84,7 @@ function SyncBadge({
     return (
       <span
         title="이 기기에만 저장 중 (Firebase 미연결)"
-        className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-semibold text-slate-500"
+        className="shrink-0 whitespace-nowrap rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-semibold text-slate-500"
       >
         로컬
       </span>
@@ -131,7 +127,8 @@ function SyncBadge({
     <span
       title={info.title}
       className={
-        "rounded-full border px-1.5 py-0.5 text-[9px] font-semibold " + info.cls
+        "shrink-0 whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[9px] font-semibold " +
+        info.cls
       }
     >
       {info.label}

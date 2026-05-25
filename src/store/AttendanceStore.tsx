@@ -69,25 +69,41 @@ function migrateFromLegacy(legacy: LegacyState): AttendanceState {
   };
 }
 
+const getTodayIso = (): string => {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+/** 앱을 켤 때마다 보는 날짜는 항상 오늘로 시작한다 (기록 자체는 보존). */
+const withTodayDate = (s: AttendanceState): AttendanceState => {
+  const today = getTodayIso();
+  const records = { ...s.records };
+  if (!records[today]) records[today] = emptyDayRecord();
+  return { ...s, date: today, records };
+};
+
 const loadFromStorage = (): AttendanceState => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as AttendanceState;
-      return {
+      return withTodayDate({
         ...INITIAL_STATE,
         ...parsed,
         records: parsed.records ?? {},
-      };
+      });
     }
     const legacyRaw = localStorage.getItem(LEGACY_KEY);
     if (legacyRaw) {
       const legacy = JSON.parse(legacyRaw) as LegacyState;
-      return migrateFromLegacy(legacy);
+      return withTodayDate(migrateFromLegacy(legacy));
     }
-    return INITIAL_STATE;
+    return withTodayDate(INITIAL_STATE);
   } catch {
-    return INITIAL_STATE;
+    return withTodayDate(INITIAL_STATE);
   }
 };
 
@@ -190,7 +206,14 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
           {
             onRemote: (remoteState) => {
               fromRemoteRef.current = true;
-              setState(remoteState);
+              // 보고 있는 날짜(date)는 클라이언트 로컬 상태로 유지.
+              // 다른 기기가 다른 날짜를 보고 있더라도 내 화면은 바뀌지 않도록.
+              setState((prev) => {
+                const today = prev.date;
+                const records = { ...remoteState.records };
+                if (!records[today]) records[today] = emptyDayRecord();
+                return { ...remoteState, date: today, records };
+              });
             },
             onStatus: (s) => setSyncStatus(s),
           },

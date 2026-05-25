@@ -75,7 +75,7 @@ const SnapshotView = forwardRef<HTMLDivElement>((_, ref) => {
       {/* 요약 표 — 메인 총합계 */}
       <table style={summaryTableStyle}>
         <thead>
-          <tr style={{ backgroundColor: "#f3f4f6" }}>
+          <tr>
             {["구분", "사역자", "청년", "교사", "참관", "합계", "헌금"].map(
               (h) => (
                 <th key={h} style={summaryHeadCell}>
@@ -92,7 +92,7 @@ const SnapshotView = forwardRef<HTMLDivElement>((_, ref) => {
             <td style={summaryCell}>{totals.youth}</td>
             <td style={summaryCell}>{totals.teachers}</td>
             <td style={summaryCell}>{totals.observers}</td>
-            <td style={summaryCellTotal}>{totals.total}</td>
+            <td style={summaryCell}>{totals.total}</td>
             <td style={summaryCell}>{formatCurrency(currentDay.offering)}</td>
           </tr>
         </tbody>
@@ -155,26 +155,20 @@ const summaryTableStyle: React.CSSProperties = {
   fontSize: 14,
 };
 const summaryHeadCell: React.CSSProperties = {
-  border: "1px solid #cbd5e1",
+  border: "1px solid #94a3b8",
   padding: "8px 4px",
   fontWeight: 700,
   textAlign: "center",
-  color: "#1f2937",
+  color: "#ffffff",
+  backgroundColor: "#475569",
 };
 const summaryCell: React.CSSProperties = {
-  border: "1px solid #cbd5e1",
-  padding: "8px 4px",
-  textAlign: "center",
-  color: "#1f2937",
-  fontWeight: 600,
-};
-const summaryCellTotal: React.CSSProperties = {
-  border: "1px solid #cbd5e1",
+  border: "1px solid #94a3b8",
   padding: "8px 4px",
   textAlign: "center",
   color: "#0f172a",
-  fontWeight: 800,
-  fontSize: 16,
+  fontWeight: 600,
+  backgroundColor: "#f1f5f9",
 };
 
 function SideTable({

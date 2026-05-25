@@ -3,6 +3,17 @@ import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
+  resolve: {
+    // dnd-kit 등 라이브러리 추가 후 React 인스턴스 중복으로 인한 hook 에러 방지
+    dedupe: ["react", "react-dom"],
+  },
+  optimizeDeps: {
+    include: [
+      "@dnd-kit/core",
+      "@dnd-kit/sortable",
+      "@dnd-kit/utilities",
+    ],
+  },
   plugins: [
     react(),
     VitePWA({

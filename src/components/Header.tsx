@@ -23,43 +23,41 @@ export default function Header({
 
   return (
     <div className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 px-4 pt-3 pb-3 backdrop-blur">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <div className="flex items-center gap-1.5">
-            <div className="whitespace-nowrap text-[15px] font-bold text-slate-900">
-              밀알청년 1부 출석 현황
-            </div>
-            <SyncBadge sync={sync} />
-          </div>
-          <div className="mt-0.5 flex items-center gap-2">
-            <input
-              type="date"
-              value={state.date}
-              onChange={(e) => setDate(e.target.value)}
-              className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-700"
-            />
-          </div>
+      <div className="flex items-center gap-1.5">
+        <div className="whitespace-nowrap text-[15px] font-bold text-slate-900">
+          밀알청년 1부 출석 현황
         </div>
-        <div className="flex flex-wrap justify-end gap-1.5">
-          <button
-            onClick={onOpenEdit}
-            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 active:bg-slate-100"
-          >
-            명단 편집
-          </button>
-          <button
-            onClick={onOpenRecords}
-            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 active:bg-slate-100"
-          >
-            기록 / 엑셀
-          </button>
-          <button
-            onClick={onOpenSnapshot}
-            className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white active:bg-slate-700"
-          >
-            이미지 저장
-          </button>
-        </div>
+        <SyncBadge sync={sync} />
+      </div>
+
+      <div className="mt-2 grid grid-cols-3 gap-1.5">
+        <button
+          onClick={onOpenEdit}
+          className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 active:bg-slate-100"
+        >
+          명단 편집
+        </button>
+        <button
+          onClick={onOpenRecords}
+          className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 active:bg-slate-100"
+        >
+          기록 / 엑셀
+        </button>
+        <button
+          onClick={onOpenSnapshot}
+          className="rounded-lg bg-slate-900 px-2 py-1.5 text-xs font-semibold text-white active:bg-slate-700"
+        >
+          이미지 저장
+        </button>
+      </div>
+
+      <div className="mt-2">
+        <input
+          type="date"
+          value={state.date}
+          onChange={(e) => setDate(e.target.value)}
+          className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-700"
+        />
       </div>
 
       <div className="mt-2 grid grid-cols-3 gap-1.5">

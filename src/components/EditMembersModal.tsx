@@ -341,8 +341,6 @@ export default function EditMembersModal({
 
         <div className="mt-6 rounded-lg bg-slate-50 px-3 py-3 text-[11px] leading-relaxed text-slate-500">
           • "굵게"를 켜면 사진처럼 조장/대표 이름이 강조됩니다.
-          <br />
-          • 명단은 이 기기에만 저장되며, 다음에 접속해도 유지됩니다.
         </div>
         </>
         )}

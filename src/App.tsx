@@ -14,7 +14,7 @@ import type { TeamId } from "./types";
 function AttendanceScreen() {
   const { state, currentDay } = useAttendance();
   const [selectedTeam, setSelectedTeam] = useState<TeamId>(
-    () => state.teams.find((t) => t.id === "innae")?.id ?? state.teams[0]?.id ?? "",
+    () => state.teams[0]?.id ?? "",
   );
 
   useEffect(() => {

@@ -125,7 +125,6 @@ const SnapshotView = forwardRef<HTMLDivElement>((_, ref) => {
             people={state.observers}
             presentMap={currentDay.observersPresent}
             headerColor="#E0EAF6"
-            minRows={3}
           />
         </div>
 
@@ -172,17 +171,14 @@ function SideTable({
   people,
   presentMap,
   headerColor,
-  minRows = 3,
 }: {
   title: string;
   people: ExtraPerson[];
   presentMap: Record<string, true>;
   headerColor: string;
-  minRows?: number;
 }) {
-  const presentCount = people.filter((p) => presentMap[p.id]).length;
-  const rows = [...people];
-  while (rows.length < minRows) rows.push({ id: `pad_${rows.length}`, name: "" });
+  const rows = people.filter((p) => p.name.trim() !== "");
+  const presentCount = rows.filter((p) => presentMap[p.id]).length;
 
   return (
     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
@@ -197,9 +193,7 @@ function SideTable({
         {rows.map((p) => (
           <tr key={p.id}>
             <td style={{ ...sideNameCell, width: "70%" }}>{p.name}</td>
-            <td style={sideMarkCell}>
-              {p.name && presentMap[p.id] ? "O" : ""}
-            </td>
+            <td style={sideMarkCell}>{presentMap[p.id] ? "O" : ""}</td>
           </tr>
         ))}
         <tr style={{ backgroundColor: "#f9fafb" }}>

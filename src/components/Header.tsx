@@ -26,12 +26,15 @@ export default function Header({
       <div className="flex items-start justify-between gap-2">
         <div>
           <div className="flex items-center gap-1.5">
-            <div className="text-[15px] font-bold text-slate-900">
-              밀알청년 1부 예배 참석 현황
+            <div className="text-[15px] font-bold leading-tight text-slate-900">
+              밀알청년 1부
             </div>
             <SyncBadge sync={sync} />
           </div>
-          <div className="mt-0.5 flex items-center gap-2">
+          <div className="text-[15px] font-bold leading-tight text-slate-900">
+            출석 현황
+          </div>
+          <div className="mt-1 flex items-center gap-2">
             <input
               type="date"
               value={state.date}

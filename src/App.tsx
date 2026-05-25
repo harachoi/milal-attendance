@@ -18,6 +18,7 @@ function AttendanceScreen() {
   const [editPwOpen, setEditPwOpen] = useState(false);
   const [snapshotOpen, setSnapshotOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [exportPwOpen, setExportPwOpen] = useState(false);
 
   const totals = useMemo(() => {
     let totalYouth = 0;
@@ -58,7 +59,7 @@ function AttendanceScreen() {
         presentTeachers={totals.presentTeachers}
         onOpenSnapshot={() => setSnapshotOpen(true)}
         onOpenEdit={() => setEditPwOpen(true)}
-        onOpenRecords={() => setExportOpen(true)}
+        onOpenRecords={() => setExportPwOpen(true)}
       />
 
       <InstallPrompt />
@@ -97,6 +98,18 @@ function AttendanceScreen() {
       />
       <SnapshotModal open={snapshotOpen} onClose={() => setSnapshotOpen(false)} />
       <RecordsModal open={exportOpen} onClose={() => setExportOpen(false)} />
+      <PasswordModal
+        open={exportPwOpen}
+        title="기록 / 엑셀 잠금"
+        description="기록을 열려면 비밀번호를 입력하세요."
+        expected="0000"
+        confirmLabel="열기"
+        onCancel={() => setExportPwOpen(false)}
+        onConfirm={() => {
+          setExportPwOpen(false);
+          setExportOpen(true);
+        }}
+      />
     </div>
   );
 }

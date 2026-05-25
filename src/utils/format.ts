@@ -4,6 +4,12 @@ export function formatDateKorean(iso: string): string {
   return `${y}. ${Number(m)}. ${Number(d)}.`;
 }
 
+export function formatDateLong(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  if (!y || !m || !d) return iso;
+  return `${y}년 ${Number(m)}월 ${Number(d)}일`;
+}
+
 export function formatDateFile(iso: string): string {
   return iso.replace(/-/g, "");
 }

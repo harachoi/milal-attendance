@@ -1,6 +1,6 @@
 import { forwardRef, useMemo } from "react";
 import { useAttendance } from "../store/AttendanceStore";
-import { formatCurrency, formatDateKorean } from "../utils/format";
+import { formatCurrency, formatDateLong } from "../utils/format";
 import type { ExtraPerson, Member, Team } from "../types";
 
 export const SNAPSHOT_WIDTH = 1280;
@@ -55,8 +55,17 @@ const SnapshotView = forwardRef<HTMLDivElement>((_, ref) => {
         <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: -0.5 }}>
           {"<  밀알청년 1부 예배 참석 현황  >"}
         </div>
-        <div style={{ fontSize: 16, fontWeight: 600, color: "#374151" }}>
-          {formatDateKorean(state.date)}
+        <div
+          style={{
+            fontSize: 16,
+            fontWeight: 600,
+            color: "#374151",
+            whiteSpace: "nowrap",
+            flexShrink: 0,
+            marginLeft: 16,
+          }}
+        >
+          {formatDateLong(state.date)}
         </div>
       </div>
 
@@ -89,10 +98,10 @@ const SnapshotView = forwardRef<HTMLDivElement>((_, ref) => {
       {/* 메모 */}
       <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
         {currentDay.notes.teacherCounts && (
-          <div>* (교사) {currentDay.notes.teacherCounts}</div>
+          <div>* {currentDay.notes.teacherCounts}</div>
         )}
         {currentDay.notes.newcomers && (
-          <div>* (신규) {currentDay.notes.newcomers}</div>
+          <div>* {currentDay.notes.newcomers}</div>
         )}
       </div>
 

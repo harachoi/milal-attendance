@@ -14,7 +14,7 @@ const SnapshotView = forwardRef<HTMLDivElement>((_, ref) => {
         acc + t.youth.filter((m) => currentDay.presentIds[m.id]).length,
       0,
     );
-    const teachers = state.teams.reduce(
+    const teamTeachers = state.teams.reduce(
       (acc, t) =>
         acc + t.teachers.filter((m) => currentDay.presentIds[m.id]).length,
       0,
@@ -28,13 +28,16 @@ const SnapshotView = forwardRef<HTMLDivElement>((_, ref) => {
     const observers = state.observers.filter(
       (p) => currentDay.observersPresent[p.id],
     ).length;
+    // 교사 = 조별 교사 + 사역자 + 봉사교사 (사역자/봉사교사가 교사에 포함됨)
+    const teachers = teamTeachers + ministers + volunteers;
     return {
       youth,
       teachers,
       ministers,
       volunteers,
       observers,
-      total: youth + teachers + ministers + observers,
+      // 사역자/봉사교사는 이미 teachers에 합산됐으므로 중복 없이 청년+교사+참관
+      total: youth + teachers + observers,
     };
   }, [state, currentDay]);
 
@@ -69,13 +72,16 @@ const SnapshotView = forwardRef<HTMLDivElement>((_, ref) => {
         </div>
       </div>
 
-      {/* 요약 표 */}
+      {/* 요약 표 — 메인 총합계 */}
       <table style={summaryTableStyle}>
         <thead>
           <tr style={{ backgroundColor: "#f3f4f6" }}>
             {["구분", "사역자", "청년", "교사", "참관", "합계", "헌금"].map(
-              (h) => (
-                <th key={h} style={summaryHeadCell}>
+              (h, i) => (
+                <th
+                  key={h}
+                  style={i === 5 ? summaryHeadCellTotal : summaryHeadCell}
+                >
                   {h}
                 </th>
               ),
@@ -89,7 +95,7 @@ const SnapshotView = forwardRef<HTMLDivElement>((_, ref) => {
             <td style={summaryCell}>{totals.youth}</td>
             <td style={summaryCell}>{totals.teachers}</td>
             <td style={summaryCell}>{totals.observers}</td>
-            <td style={summaryCell}>{totals.total}</td>
+            <td style={summaryCellTotal}>{totals.total}</td>
             <td style={summaryCell}>{formatCurrency(currentDay.offering)}</td>
           </tr>
         </tbody>
@@ -164,6 +170,23 @@ const summaryCell: React.CSSProperties = {
   textAlign: "center",
   color: "#1f2937",
   fontWeight: 600,
+};
+const summaryHeadCellTotal: React.CSSProperties = {
+  border: "1px solid #94a3b8",
+  padding: "8px 4px",
+  fontWeight: 800,
+  textAlign: "center",
+  color: "#0f172a",
+  backgroundColor: "#fde68a",
+};
+const summaryCellTotal: React.CSSProperties = {
+  border: "1px solid #94a3b8",
+  padding: "8px 4px",
+  textAlign: "center",
+  color: "#0f172a",
+  fontWeight: 800,
+  fontSize: 16,
+  backgroundColor: "#fef3c7",
 };
 
 function SideTable({

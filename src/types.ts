@@ -1,9 +1,6 @@
-export type TeamId =
-  | "sarang"
-  | "mideum"
-  | "innae"
-  | "younggwang"
-  | "soman";
+/** 조 ID는 동적으로 추가/삭제 가능하므로 string으로 둔다.
+ *  (초기 조는 "sarang", "mideum", "innae", "younggwang", "soman" 등) */
+export type TeamId = string;
 
 export type Role = "youth" | "teacher";
 

@@ -36,12 +36,19 @@ export default function EditMembersModal({
     removeMember,
     setMemberBold,
     reorderMembers,
+    addTeam,
+    renameTeam,
+    removeTeam,
   } = useAttendance();
   const [teamId, setTeamId] = useState<TeamId>(initialTeamId);
   const [role, setRole] = useState<Role>("youth");
   const [newName, setNewName] = useState("");
   const [editId, setEditId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [addingTeam, setAddingTeam] = useState(false);
+  const [newTeamName, setNewTeamName] = useState("");
+  const [renamingTeam, setRenamingTeam] = useState(false);
+  const [teamNameDraft, setTeamNameDraft] = useState("");
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -52,18 +59,51 @@ export default function EditMembersModal({
 
   if (!open) return null;
 
-  const team = state.teams.find((t) => t.id === teamId)!;
-  const list = role === "youth" ? team.youth : team.teachers;
+  const team = state.teams.find((t) => t.id === teamId);
+  const list = team ? (role === "youth" ? team.youth : team.teachers) : [];
+
+  const commitAddTeam = () => {
+    const id = addTeam(newTeamName);
+    if (id) {
+      setTeamId(id);
+      setRole("youth");
+    }
+    setNewTeamName("");
+    setAddingTeam(false);
+  };
+
+  const startRenameTeam = () => {
+    if (!team) return;
+    setTeamNameDraft(team.name);
+    setRenamingTeam(true);
+  };
+
+  const commitRenameTeam = () => {
+    if (!team) return;
+    renameTeam(team.id, teamNameDraft);
+    setRenamingTeam(false);
+  };
+
+  const handleRemoveTeam = () => {
+    if (!team) return;
+    if (
+      confirm(
+        `'${team.name}' 조를 삭제할까요? 이 조의 명단과 출석 기록도 함께 사라집니다.`,
+      )
+    ) {
+      removeTeam(team.id);
+    }
+  };
 
   const handleDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
-    if (!over || active.id === over.id) return;
+    if (!over || active.id === over.id || !team) return;
     const oldIndex = list.findIndex((m) => m.id === active.id);
     const newIndex = list.findIndex((m) => m.id === over.id);
     if (oldIndex < 0 || newIndex < 0) return;
     const reordered = arrayMove(list, oldIndex, newIndex);
     reorderMembers(
-      teamId,
+      team.id,
       role,
       reordered.map((m) => m.id),
     );
@@ -82,11 +122,14 @@ export default function EditMembersModal({
       </div>
 
       <div className="border-b border-slate-200 px-4 pt-3 pb-2">
-        <div className="-mx-1 flex gap-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="-mx-1 flex items-center gap-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {state.teams.map((t) => (
             <button
               key={t.id}
-              onClick={() => setTeamId(t.id)}
+              onClick={() => {
+                setTeamId(t.id);
+                setRenamingTeam(false);
+              }}
               className={
                 "shrink-0 rounded-full border px-3 py-1 text-xs font-semibold " +
                 (t.id === teamId
@@ -98,36 +141,137 @@ export default function EditMembersModal({
               {t.name}
             </button>
           ))}
+          <button
+            onClick={() => {
+              setAddingTeam(true);
+              setNewTeamName("");
+            }}
+            className="shrink-0 rounded-full border border-dashed border-slate-300 px-3 py-1 text-xs font-semibold text-slate-500 active:bg-slate-100"
+          >
+            + 조 추가
+          </button>
         </div>
-        <div className="mt-2 flex gap-1.5">
-          {(["youth", "teacher"] as Role[]).map((r) => (
+
+        {addingTeam && (
+          <div className="mt-2 flex gap-1.5">
+            <input
+              value={newTeamName}
+              onChange={(e) => setNewTeamName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commitAddTeam();
+                if (e.key === "Escape") {
+                  setAddingTeam(false);
+                  setNewTeamName("");
+                }
+              }}
+              autoFocus
+              placeholder="새 조 이름"
+              className="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+            />
             <button
-              key={r}
-              onClick={() => setRole(r)}
-              className={
-                "flex-1 rounded-lg border py-1.5 text-xs font-semibold " +
-                (role === r
-                  ? "border-slate-900 bg-slate-900 text-white"
-                  : "border-slate-200 bg-white text-slate-600")
-              }
+              onClick={commitAddTeam}
+              className="rounded-lg bg-slate-900 px-3 text-xs font-semibold text-white"
             >
-              {r === "youth" ? "청년" : "교사"}
-              <span className="ml-1 font-medium opacity-70">
-                {r === "youth" ? team.youth.length : team.teachers.length}명
-              </span>
+              추가
             </button>
-          ))}
-        </div>
+            <button
+              onClick={() => {
+                setAddingTeam(false);
+                setNewTeamName("");
+              }}
+              className="rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-600"
+            >
+              취소
+            </button>
+          </div>
+        )}
+
+        {team && (
+          <div className="mt-2 flex items-center gap-1.5">
+            {renamingTeam ? (
+              <>
+                <input
+                  value={teamNameDraft}
+                  onChange={(e) => setTeamNameDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") commitRenameTeam();
+                    if (e.key === "Escape") setRenamingTeam(false);
+                  }}
+                  autoFocus
+                  className="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+                />
+                <button
+                  onClick={commitRenameTeam}
+                  className="rounded-lg bg-slate-900 px-3 text-xs font-semibold text-white"
+                >
+                  저장
+                </button>
+                <button
+                  onClick={() => setRenamingTeam(false)}
+                  className="rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-600"
+                >
+                  취소
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="flex-1 text-[11px] text-slate-500">
+                  선택된 조: <span className="font-semibold text-slate-700">{team.name}</span>
+                </div>
+                <button
+                  onClick={startRenameTeam}
+                  className="rounded-md border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 active:bg-slate-100"
+                >
+                  이름 수정
+                </button>
+                <button
+                  onClick={handleRemoveTeam}
+                  className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-medium text-rose-500 active:bg-rose-100"
+                >
+                  조 삭제
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {team && (
+          <div className="mt-2 flex gap-1.5">
+            {(["youth", "teacher"] as Role[]).map((r) => (
+              <button
+                key={r}
+                onClick={() => setRole(r)}
+                className={
+                  "flex-1 rounded-lg border py-1.5 text-xs font-semibold " +
+                  (role === r
+                    ? "border-slate-900 bg-slate-900 text-white"
+                    : "border-slate-200 bg-white text-slate-600")
+                }
+              >
+                {r === "youth" ? "청년" : "교사"}
+                <span className="ml-1 font-medium opacity-70">
+                  {r === "youth" ? team.youth.length : team.teachers.length}명
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-3">
+        {!team ? (
+          <div className="rounded-lg border border-dashed border-slate-200 px-3 py-8 text-center text-xs text-slate-400">
+            선택된 조가 없습니다. 위에서 "+ 조 추가"로 새 조를 만드세요.
+          </div>
+        ) : (
+        <>
         <div className="mb-2 flex gap-1.5">
           <input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
-                addMember(teamId, role, newName);
+                addMember(team.id, role, newName);
                 setNewName("");
               }
             }}
@@ -136,7 +280,7 @@ export default function EditMembersModal({
           />
           <button
             onClick={() => {
-              addMember(teamId, role, newName);
+              addMember(team.id, role, newName);
               setNewName("");
             }}
             className="rounded-lg bg-slate-900 px-3 text-xs font-semibold text-white"
@@ -200,6 +344,8 @@ export default function EditMembersModal({
           <br />
           • 명단은 이 기기에만 저장되며, 다음에 접속해도 유지됩니다.
         </div>
+        </>
+        )}
       </div>
     </div>
   );

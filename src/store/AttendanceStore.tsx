@@ -136,6 +136,11 @@ interface ContextValue {
   reorderMembers: (teamId: TeamId, role: Role, orderedIds: string[]) => void;
   reorderExtras: (group: ExtraGroup, orderedIds: string[]) => void;
 
+  addTeam: (name: string) => TeamId | null;
+  renameTeam: (teamId: TeamId, name: string) => void;
+  removeTeam: (teamId: TeamId) => void;
+  reorderTeams: (orderedIds: TeamId[]) => void;
+
   addExtra: (group: ExtraGroup, name: string) => void;
   renameExtra: (group: ExtraGroup, id: string, name: string) => void;
   removeExtra: (group: ExtraGroup, id: string) => void;
@@ -393,6 +398,90 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const TEAM_COLOR_PALETTE = [
+    "#FFF4D6",
+    "#FFE0E9",
+    "#DCEEFB",
+    "#DCF5E3",
+    "#EADCFB",
+    "#FDE2C4",
+    "#E0F2FE",
+    "#FCE7F3",
+  ];
+
+  const addTeam = useCallback((name: string): TeamId | null => {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    const id = newId("team");
+    setState((s) => {
+      const used = new Set(s.teams.map((t) => t.color));
+      const color =
+        TEAM_COLOR_PALETTE.find((c) => !used.has(c)) ??
+        TEAM_COLOR_PALETTE[s.teams.length % TEAM_COLOR_PALETTE.length];
+      return {
+        ...s,
+        teams: [
+          ...s.teams,
+          { id, name: trimmed, color, youth: [], teachers: [] },
+        ],
+      };
+    });
+    return id;
+  }, []);
+
+  const renameTeam = useCallback((teamId: TeamId, name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setState((s) => ({
+      ...s,
+      teams: s.teams.map((t) =>
+        t.id === teamId ? { ...t, name: trimmed } : t,
+      ),
+    }));
+  }, []);
+
+  const removeTeam = useCallback((teamId: TeamId) => {
+    setState((s) => {
+      const target = s.teams.find((t) => t.id === teamId);
+      if (!target) return s;
+      const memberIds = new Set<string>([
+        ...target.youth.map((m) => m.id),
+        ...target.teachers.map((m) => m.id),
+      ]);
+      const records: Record<string, DayRecord> = {};
+      for (const [d, rec] of Object.entries(s.records)) {
+        let changed = false;
+        const next: Record<string, true> = {};
+        for (const k of Object.keys(rec.presentIds)) {
+          if (memberIds.has(k)) {
+            changed = true;
+            continue;
+          }
+          next[k] = true;
+        }
+        records[d] = changed ? { ...rec, presentIds: next } : rec;
+      }
+      return {
+        ...s,
+        teams: s.teams.filter((t) => t.id !== teamId),
+        records,
+      };
+    });
+  }, []);
+
+  const reorderTeams = useCallback((orderedIds: TeamId[]) => {
+    setState((s) => {
+      const byId = new Map(s.teams.map((t) => [t.id, t]));
+      const sorted = orderedIds
+        .map((id) => byId.get(id))
+        .filter((t): t is (typeof s.teams)[number] => Boolean(t));
+      for (const t of s.teams) {
+        if (!orderedIds.includes(t.id)) sorted.push(t);
+      }
+      return { ...s, teams: sorted };
+    });
+  }, []);
+
   const removeMember = useCallback((memberId: string) => {
     setState((s) => {
       const records: Record<string, DayRecord> = {};
@@ -514,6 +603,10 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
       setMemberBold,
       reorderMembers,
       reorderExtras,
+      addTeam,
+      renameTeam,
+      removeTeam,
+      reorderTeams,
       addExtra,
       renameExtra,
       removeExtra,
@@ -537,6 +630,10 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
       setMemberBold,
       reorderMembers,
       reorderExtras,
+      addTeam,
+      renameTeam,
+      removeTeam,
+      reorderTeams,
       addExtra,
       renameExtra,
       removeExtra,

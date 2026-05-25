@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Header from "./components/Header";
 import TeamTabs from "./components/TeamTabs";
 import TeamAttendance from "./components/TeamAttendance";
@@ -13,7 +13,15 @@ import type { TeamId } from "./types";
 
 function AttendanceScreen() {
   const { state, currentDay } = useAttendance();
-  const [selectedTeam, setSelectedTeam] = useState<TeamId>("innae");
+  const [selectedTeam, setSelectedTeam] = useState<TeamId>(
+    () => state.teams.find((t) => t.id === "innae")?.id ?? state.teams[0]?.id ?? "",
+  );
+
+  useEffect(() => {
+    if (!state.teams.some((t) => t.id === selectedTeam)) {
+      setSelectedTeam(state.teams[0]?.id ?? "");
+    }
+  }, [state.teams, selectedTeam]);
   const [editOpen, setEditOpen] = useState(false);
   const [editPwOpen, setEditPwOpen] = useState(false);
   const [snapshotOpen, setSnapshotOpen] = useState(false);
@@ -48,7 +56,7 @@ function AttendanceScreen() {
     return { totalYouth, presentYouth, totalTeachers, presentTeachers, presentByTeam };
   }, [state, currentDay]);
 
-  const team = state.teams.find((t) => t.id === selectedTeam)!;
+  const team = state.teams.find((t) => t.id === selectedTeam);
 
   return (
     <div className="mx-auto flex min-h-full max-w-screen-md flex-col">
@@ -74,7 +82,13 @@ function AttendanceScreen() {
       </div>
 
       <main className="flex-1 space-y-3 px-4 pt-2 pb-24">
-        <TeamAttendance team={team} />
+        {team ? (
+          <TeamAttendance team={team} />
+        ) : (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center text-xs text-slate-400">
+            아직 등록된 조가 없습니다. 명단 편집에서 조를 추가하세요.
+          </div>
+        )}
         <ExtraGroups />
         <Footer />
       </main>

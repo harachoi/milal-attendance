@@ -41,6 +41,14 @@ export default function RecordsModal({ open, onClose }: Props) {
   };
 
   const handleDelete = (d: string) => {
+    const pw = prompt(
+      `${formatDateKorean(d)} 기록을 삭제하려면 비밀번호를 입력하세요.`,
+    );
+    if (pw === null) return;
+    if (pw !== "0000") {
+      alert("비밀번호가 올바르지 않습니다.");
+      return;
+    }
     if (
       confirm(`${formatDateKorean(d)} 기록을 삭제할까요? 되돌릴 수 없습니다.`)
     ) {

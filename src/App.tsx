@@ -7,6 +7,7 @@ import EditMembersModal from "./components/EditMembersModal";
 import SnapshotModal from "./components/SnapshotModal";
 import RecordsModal from "./components/RecordsModal";
 import InstallPrompt from "./components/InstallPrompt";
+import PasswordModal from "./components/PasswordModal";
 import { AttendanceProvider, useAttendance } from "./store/AttendanceStore";
 import type { TeamId } from "./types";
 
@@ -14,6 +15,7 @@ function AttendanceScreen() {
   const { state, currentDay } = useAttendance();
   const [selectedTeam, setSelectedTeam] = useState<TeamId>("innae");
   const [editOpen, setEditOpen] = useState(false);
+  const [editPwOpen, setEditPwOpen] = useState(false);
   const [snapshotOpen, setSnapshotOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
 
@@ -55,7 +57,7 @@ function AttendanceScreen() {
         totalTeachers={totals.totalTeachers}
         presentTeachers={totals.presentTeachers}
         onOpenSnapshot={() => setSnapshotOpen(true)}
-        onOpenEdit={() => setEditOpen(true)}
+        onOpenEdit={() => setEditPwOpen(true)}
         onOpenRecords={() => setExportOpen(true)}
       />
 
@@ -80,6 +82,18 @@ function AttendanceScreen() {
         open={editOpen}
         initialTeamId={selectedTeam}
         onClose={() => setEditOpen(false)}
+      />
+      <PasswordModal
+        open={editPwOpen}
+        title="명단 편집 잠금"
+        description="명단을 편집하려면 비밀번호를 입력하세요."
+        expected="0000"
+        confirmLabel="열기"
+        onCancel={() => setEditPwOpen(false)}
+        onConfirm={() => {
+          setEditPwOpen(false);
+          setEditOpen(true);
+        }}
       />
       <SnapshotModal open={snapshotOpen} onClose={() => setSnapshotOpen(false)} />
       <RecordsModal open={exportOpen} onClose={() => setExportOpen(false)} />

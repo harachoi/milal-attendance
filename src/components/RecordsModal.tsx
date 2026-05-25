@@ -70,7 +70,7 @@ export default function RecordsModal({ open, onClose }: Props) {
         <div>
           <div className="text-base font-bold text-slate-900">기록 / 엑셀</div>
           <div className="mt-0.5 text-[11px] text-slate-500">
-            저장된 {dates.length}개 날짜 — 왼쪽은 이름, 오른쪽은 날짜별 O/X
+            저장된 {dates.length}개 날짜
           </div>
         </div>
         <button

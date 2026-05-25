@@ -20,17 +20,7 @@ export default function Header({
   onOpenEdit,
   onOpenRecords,
 }: Props) {
-  const { state, sync, setDate, resetAttendance } = useAttendance();
-
-  const handleReset = () => {
-    if (
-      confirm(
-        "오늘 입력한 출석 체크가 모두 지워집니다. 정말 초기화할까요? (명단은 유지됩니다)",
-      )
-    ) {
-      resetAttendance();
-    }
-  };
+  const { state, sync, setDate } = useAttendance();
 
   return (
     <div className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 px-4 pt-3 pb-3 backdrop-blur">
@@ -84,15 +74,6 @@ export default function Header({
           present={presentYouth + presentTeachers}
           total={totalYouth + totalTeachers}
         />
-      </div>
-
-      <div className="mt-2 flex justify-end">
-        <button
-          onClick={handleReset}
-          className="text-[11px] text-slate-400 underline-offset-2 hover:underline"
-        >
-          오늘 출석 초기화
-        </button>
       </div>
     </div>
   );

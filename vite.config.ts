@@ -21,7 +21,7 @@ export default defineConfig({
       includeAssets: ["favicon.ico", "favicon.svg", "apple-touch-icon-180x180.png"],
       manifest: {
         name: "밀알청년 출석체크",
-        short_name: "출석체크",
+        short_name: "밀청 출석체크",
         description: "5개 조 청년·교사 출석을 터치로 체크하고 이미지/엑셀로 내보내는 앱",
         theme_color: "#10b981",
         background_color: "#ffffff",

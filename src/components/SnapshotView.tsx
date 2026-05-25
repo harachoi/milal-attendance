@@ -28,16 +28,16 @@ const SnapshotView = forwardRef<HTMLDivElement>((_, ref) => {
     const observers = state.observers.filter(
       (p) => currentDay.observersPresent[p.id],
     ).length;
-    // 교사 = 조별 교사 + 사역자 + 봉사교사 (사역자/봉사교사가 교사에 포함됨)
-    const teachers = teamTeachers + ministers + volunteers;
+    // 교사 = 조별 교사 + 봉사교사 (사역자는 별도)
+    const teachers = teamTeachers + volunteers;
     return {
       youth,
       teachers,
       ministers,
       volunteers,
       observers,
-      // 사역자/봉사교사는 이미 teachers에 합산됐으므로 중복 없이 청년+교사+참관
-      total: youth + teachers + observers,
+      // 사역자는 별도 카운트, 봉사교사만 teachers에 포함
+      total: youth + teachers + ministers + observers,
     };
   }, [state, currentDay]);
 

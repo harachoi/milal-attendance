@@ -35,13 +35,7 @@ export default function TeamAttendance({ team }: Props) {
       style={{ borderTop: `4px solid ${team.color}` }}
     >
       <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="flex items-baseline gap-2">
-          <div className="text-base font-bold text-slate-900">{team.name}</div>
-          <div className="text-xs text-slate-500">
-            청년 {youthPresent}/{team.youth.length} · 교사 {teachersPresent}/
-            {team.teachers.length}
-          </div>
-        </div>
+        <div className="text-base font-bold text-slate-900">{team.name}</div>
         <button
           onClick={toggleTeamAll}
           disabled={teamTotal === 0}

@@ -10,6 +10,9 @@ interface Props {
 export default function RecordsModal({ open, onClose }: Props) {
   const { state, setDate, removeRecord } = useAttendance();
   const [busy, setBusy] = useState(false);
+  const [deletingDate, setDeletingDate] = useState<string | null>(null);
+  const [pwInput, setPwInput] = useState("");
+  const [pwError, setPwError] = useState("");
 
   const dates = useMemo(
     () => Object.keys(state.records).sort().reverse(),
@@ -41,19 +44,24 @@ export default function RecordsModal({ open, onClose }: Props) {
   };
 
   const handleDelete = (d: string) => {
-    const pw = prompt(
-      `${formatDateKorean(d)} 기록을 삭제하려면 비밀번호를 입력하세요.`,
-    );
-    if (pw === null) return;
-    if (pw !== "0000") {
-      alert("비밀번호가 올바르지 않습니다.");
+    setDeletingDate(d);
+    setPwInput("");
+    setPwError("");
+  };
+
+  const cancelDelete = () => {
+    setDeletingDate(null);
+    setPwInput("");
+    setPwError("");
+  };
+
+  const confirmDelete = () => {
+    if (pwInput !== "0000") {
+      setPwError("비밀번호가 올바르지 않습니다.");
       return;
     }
-    if (
-      confirm(`${formatDateKorean(d)} 기록을 삭제할까요? 되돌릴 수 없습니다.`)
-    ) {
-      removeRecord(d);
-    }
+    if (deletingDate) removeRecord(deletingDate);
+    cancelDelete();
   };
 
   const todayIso = new Date().toISOString().slice(0, 10);
@@ -170,6 +178,60 @@ export default function RecordsModal({ open, onClose }: Props) {
           &nbsp;&nbsp;3) <b>조별 통계</b> — 조·구분별 출석 추이
         </div>
       </div>
+
+      {deletingDate && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-6"
+          onClick={cancelDelete}
+        >
+          <div
+            className="w-full max-w-xs rounded-2xl bg-white p-4 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-sm font-bold text-slate-900">
+              기록 삭제 확인
+            </div>
+            <div className="mt-1 text-[12px] text-slate-600">
+              {formatDateKorean(deletingDate)} 기록을 삭제하려면 비밀번호를
+              입력하세요. 되돌릴 수 없습니다.
+            </div>
+            <input
+              type="password"
+              inputMode="numeric"
+              autoFocus
+              value={pwInput}
+              onChange={(e) => {
+                setPwInput(e.target.value);
+                if (pwError) setPwError("");
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") confirmDelete();
+              }}
+              placeholder="비밀번호"
+              className="mt-3 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-base tracking-widest text-slate-900 focus:border-slate-400 focus:outline-none"
+            />
+            {pwError && (
+              <div className="mt-1.5 text-[11px] font-medium text-rose-500">
+                {pwError}
+              </div>
+            )}
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={cancelDelete}
+                className="flex-1 rounded-lg border border-slate-200 bg-white py-2 text-sm font-semibold text-slate-700 active:bg-slate-100"
+              >
+                취소
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="flex-1 rounded-lg bg-rose-500 py-2 text-sm font-semibold text-white active:bg-rose-600"
+              >
+                삭제
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

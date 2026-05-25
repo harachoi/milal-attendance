@@ -64,12 +64,6 @@ export default function RecordsModal({ open, onClose }: Props) {
     cancelDelete();
   };
 
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const handleAddToday = () => {
-    setDate(todayIso);
-    onClose();
-  };
-
   return (
     <div className="fixed inset-0 z-30 flex flex-col bg-white">
       <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
@@ -98,14 +92,8 @@ export default function RecordsModal({ open, onClose }: Props) {
             : `엑셀(.xlsx)로 다운로드 — ${dates.length}개 날짜`}
         </button>
 
-        <div className="mb-2 flex items-center justify-between">
-          <div className="text-sm font-semibold text-slate-700">저장된 날짜</div>
-          <button
-            onClick={handleAddToday}
-            className="rounded-md border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 active:bg-slate-100"
-          >
-            + 오늘 추가
-          </button>
+        <div className="mb-2 text-sm font-semibold text-slate-700">
+          저장된 날짜
         </div>
 
         <div className="space-y-1.5">

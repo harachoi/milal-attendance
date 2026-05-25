@@ -90,7 +90,6 @@ function AttendanceScreen() {
           </div>
         )}
         <ExtraGroups />
-        <Footer />
       </main>
 
       <EditMembersModal
@@ -124,14 +123,6 @@ function AttendanceScreen() {
           setExportOpen(true);
         }}
       />
-    </div>
-  );
-}
-
-function Footer() {
-  return (
-    <div className="pt-2 text-center text-[11px] leading-relaxed text-slate-400">
-      탭하면 O 표시 · 데이터는 이 기기에만 저장됩니다
     </div>
   );
 }

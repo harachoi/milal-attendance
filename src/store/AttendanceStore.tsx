@@ -133,6 +133,8 @@ interface ContextValue {
   renameMember: (memberId: string, name: string) => void;
   removeMember: (memberId: string) => void;
   setMemberBold: (memberId: string, bold: boolean) => void;
+  reorderMembers: (teamId: TeamId, role: Role, orderedIds: string[]) => void;
+  reorderExtras: (group: ExtraGroup, orderedIds: string[]) => void;
 
   addExtra: (group: ExtraGroup, name: string) => void;
   renameExtra: (group: ExtraGroup, id: string, name: string) => void;
@@ -349,6 +351,48 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
+  const reorderMembers = useCallback(
+    (teamId: TeamId, role: Role, orderedIds: string[]) => {
+      setState((s) => ({
+        ...s,
+        teams: s.teams.map((t) => {
+          if (t.id !== teamId) return t;
+          const list = role === "youth" ? t.youth : t.teachers;
+          const byId = new Map(list.map((m) => [m.id, m]));
+          const sorted = orderedIds
+            .map((id) => byId.get(id))
+            .filter((m): m is Member => Boolean(m));
+          // 누락된 항목이 있다면 끝에 보존 (방어적)
+          for (const m of list) {
+            if (!orderedIds.includes(m.id)) sorted.push(m);
+          }
+          return role === "youth"
+            ? { ...t, youth: sorted }
+            : { ...t, teachers: sorted };
+        }),
+      }));
+    },
+    [],
+  );
+
+  const reorderExtras = useCallback(
+    (group: ExtraGroup, orderedIds: string[]) => {
+      setState((s) => {
+        const key = rosterKeyOf(group);
+        const list = s[key];
+        const byId = new Map(list.map((p) => [p.id, p]));
+        const sorted = orderedIds
+          .map((id) => byId.get(id))
+          .filter((p): p is ExtraPerson => Boolean(p));
+        for (const p of list) {
+          if (!orderedIds.includes(p.id)) sorted.push(p);
+        }
+        return { ...s, [key]: sorted } as AttendanceState;
+      });
+    },
+    [],
+  );
+
   const removeMember = useCallback((memberId: string) => {
     setState((s) => {
       const records: Record<string, DayRecord> = {};
@@ -468,6 +512,8 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
       renameMember,
       removeMember,
       setMemberBold,
+      reorderMembers,
+      reorderExtras,
       addExtra,
       renameExtra,
       removeExtra,
@@ -489,6 +535,8 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
       renameMember,
       removeMember,
       setMemberBold,
+      reorderMembers,
+      reorderExtras,
       addExtra,
       renameExtra,
       removeExtra,

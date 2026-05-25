@@ -45,14 +45,14 @@ export default function ExtraGroups() {
           type="text"
           value={currentDay.notes.teacherCounts ?? ""}
           onChange={(e) => setNotes({ teacherCounts: e.target.value })}
-          placeholder="예) 일반교사 56명, 봉사교사 3명"
+          placeholder="예) (참관)"
           className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-slate-400 focus:outline-none"
         />
         <input
           type="text"
           value={currentDay.notes.newcomers ?? ""}
           onChange={(e) => setNotes({ newcomers: e.target.value })}
-          placeholder="예) (신규) 영광조 교사 명관선, 청년 최서인"
+          placeholder="예) (신교)"
           className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-slate-400 focus:outline-none"
         />
       </div>

@@ -52,7 +52,7 @@ export default function ExtraGroups() {
           type="text"
           value={currentDay.notes.newcomers ?? ""}
           onChange={(e) => setNotes({ newcomers: e.target.value })}
-          placeholder="예) (신교)"
+          placeholder="예) (신규)"
           className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-slate-400 focus:outline-none"
         />
       </div>

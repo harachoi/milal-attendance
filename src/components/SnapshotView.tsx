@@ -77,11 +77,8 @@ const SnapshotView = forwardRef<HTMLDivElement>((_, ref) => {
         <thead>
           <tr style={{ backgroundColor: "#f3f4f6" }}>
             {["구분", "사역자", "청년", "교사", "참관", "합계", "헌금"].map(
-              (h, i) => (
-                <th
-                  key={h}
-                  style={i === 5 ? summaryHeadCellTotal : summaryHeadCell}
-                >
+              (h) => (
+                <th key={h} style={summaryHeadCell}>
                   {h}
                 </th>
               ),
@@ -171,22 +168,13 @@ const summaryCell: React.CSSProperties = {
   color: "#1f2937",
   fontWeight: 600,
 };
-const summaryHeadCellTotal: React.CSSProperties = {
-  border: "1px solid #94a3b8",
-  padding: "8px 4px",
-  fontWeight: 800,
-  textAlign: "center",
-  color: "#0f172a",
-  backgroundColor: "#fde68a",
-};
 const summaryCellTotal: React.CSSProperties = {
-  border: "1px solid #94a3b8",
+  border: "1px solid #cbd5e1",
   padding: "8px 4px",
   textAlign: "center",
   color: "#0f172a",
   fontWeight: 800,
   fontSize: 16,
-  backgroundColor: "#fef3c7",
 };
 
 function SideTable({

@@ -1,12 +1,13 @@
 import * as XLSX from "xlsx";
 import type { AttendanceState, DayRecord } from "../types";
 import { formatDateFile } from "./format";
+import { listSavedRecordDates } from "./records";
 
 type Row = (string | number)[];
 
 /** 모든 멤버 × 날짜 매트릭스 + 요약 시트를 담은 xlsx 파일을 생성해 다운로드합니다. */
 export function exportAttendanceXlsx(state: AttendanceState) {
-  const dates = Object.keys(state.records).sort(); // 오름차순
+  const dates = listSavedRecordDates(state, "asc");
   if (dates.length === 0) return;
 
   const wb = XLSX.utils.book_new();

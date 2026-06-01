@@ -1,6 +1,11 @@
 import { useMemo, useState } from "react";
 import { useAttendance } from "../store/AttendanceStore";
 import { formatDateKorean, formatCurrency } from "../utils/format";
+import {
+  countTeachersPresent,
+  countYouthPresent,
+  listSavedRecordDates,
+} from "../utils/records";
 
 interface Props {
   open: boolean;
@@ -15,8 +20,8 @@ export default function RecordsModal({ open, onClose }: Props) {
   const [pwError, setPwError] = useState("");
 
   const dates = useMemo(
-    () => Object.keys(state.records).sort().reverse(),
-    [state.records],
+    () => listSavedRecordDates(state, "desc"),
+    [state],
   );
 
   if (!open) return null;
@@ -99,26 +104,12 @@ export default function RecordsModal({ open, onClose }: Props) {
         <div className="space-y-1.5">
           {dates.map((d) => {
             const rec = state.records[d];
-            const youth = state.teams.reduce(
-              (acc, t) =>
-                acc + t.youth.filter((m) => rec?.presentIds[m.id]).length,
-              0,
-            );
-            const teachers = state.teams.reduce(
-              (acc, t) =>
-                acc + t.teachers.filter((m) => rec?.presentIds[m.id]).length,
-              0,
-            );
-            const isCurrent = d === state.date;
+            const youth = rec ? countYouthPresent(state, rec) : 0;
+            const teachers = rec ? countTeachersPresent(state, rec) : 0;
             return (
               <div
                 key={d}
-                className={
-                  "flex items-center gap-2 rounded-lg border px-3 py-2 " +
-                  (isCurrent
-                    ? "border-emerald-400 bg-emerald-50"
-                    : "border-slate-200 bg-white")
-                }
+                className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2"
               >
                 <button
                   onClick={() => handlePick(d)}
@@ -126,11 +117,6 @@ export default function RecordsModal({ open, onClose }: Props) {
                 >
                   <div className="text-sm font-semibold text-slate-900">
                     {formatDateKorean(d)}
-                    {isCurrent && (
-                      <span className="ml-2 rounded bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                        편집 중
-                      </span>
-                    )}
                   </div>
                   <div className="mt-0.5 text-[11px] text-slate-500">
                     청년 {youth} · 교사 {teachers} · 헌금{" "}

@@ -44,6 +44,8 @@ export interface AttendanceState {
   volunteerTeachers: ExtraPerson[];
   observers: ExtraPerson[];
   records: Record<string, DayRecord>; // 날짜 -> 기록
+  /** 로컬·원격 충돌 시 최신 데이터를 고르기 위한 수정 시각(ms) */
+  updatedAt?: number;
 }
 
 export const emptyDayRecord = (): DayRecord => ({

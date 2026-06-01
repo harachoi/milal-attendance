@@ -85,16 +85,28 @@ const withTodayDate = (s: AttendanceState): AttendanceState => {
   return { ...s, date: today, records };
 };
 
+const normalizeState = (parsed: Partial<AttendanceState>): AttendanceState => {
+  const base = withTodayDate({
+    date: parsed.date ?? INITIAL_STATE.date,
+    teams: parsed.teams ?? INITIAL_STATE.teams,
+    ministers: parsed.ministers ?? INITIAL_STATE.ministers,
+    volunteerTeachers:
+      parsed.volunteerTeachers ?? INITIAL_STATE.volunteerTeachers,
+    observers: parsed.observers ?? INITIAL_STATE.observers,
+    records: parsed.records ?? {},
+    updatedAt: parsed.updatedAt,
+  });
+  // 예전 저장본에는 updatedAt이 없음 — 서버의 옛 명단이 덮어쓰지 않도록 현재 시각 부여
+  if (!base.updatedAt) return { ...base, updatedAt: Date.now() };
+  return base;
+};
+
 const loadFromStorage = (): AttendanceState => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as AttendanceState;
-      return withTodayDate({
-        ...INITIAL_STATE,
-        ...parsed,
-        records: parsed.records ?? {},
-      });
+      return normalizeState(parsed);
     }
     const legacyRaw = localStorage.getItem(LEGACY_KEY);
     if (legacyRaw) {
@@ -179,7 +191,9 @@ function withDay(
 }
 
 export function AttendanceProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AttendanceState>(() => loadFromStorage());
+  const [state, setStateInner] = useState<AttendanceState>(() =>
+    loadFromStorage(),
+  );
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(
     firebaseEnabled ? "connecting" : "disabled",
   );
@@ -187,6 +201,22 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
   const fromRemoteRef = useRef(false);
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  const setState = useCallback(
+    (
+      action:
+        | AttendanceState
+        | ((prev: AttendanceState) => AttendanceState),
+    ) => {
+      setStateInner((prev) => {
+        const next = typeof action === "function" ? action(prev) : action;
+        if (fromRemoteRef.current) return next;
+        const updatedAt = Date.now();
+        return next.updatedAt === updatedAt ? next : { ...next, updatedAt };
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
     try {
@@ -211,7 +241,11 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
       mod
         .startSync(
           {
-            onRemote: (remoteState) => {
+            onRemote: (remoteState, remoteUpdatedAtMs) => {
+              const localAt = stateRef.current.updatedAt ?? 0;
+              if (remoteUpdatedAtMs > 0 && remoteUpdatedAtMs < localAt) {
+                return;
+              }
               fromRemoteRef.current = true;
               // 보고 있는 날짜(date)는 클라이언트 로컬 상태로 유지.
               // 다른 기기가 다른 날짜를 보고 있더라도 내 화면은 바뀌지 않도록.
@@ -219,7 +253,12 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
                 const today = prev.date;
                 const records = { ...remoteState.records };
                 if (!records[today]) records[today] = emptyDayRecord();
-                return { ...remoteState, date: today, records };
+                return {
+                  ...remoteState,
+                  date: today,
+                  records,
+                  updatedAt: remoteUpdatedAtMs || remoteState.updatedAt,
+                };
               });
             },
             onStatus: (s) => setSyncStatus(s),
@@ -574,7 +613,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const resetAll = useCallback(() => {
-    setState(INITIAL_STATE);
+    setState({ ...INITIAL_STATE, updatedAt: Date.now() });
   }, []);
 
   const sync: SyncInfo = useMemo(

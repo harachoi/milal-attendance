@@ -10,8 +10,23 @@ export type SyncStatus =
   | "error";
 
 export interface SyncCallbacks {
-  onRemote: (state: AttendanceState) => void;
+  onRemote: (state: AttendanceState, updatedAtMs: number) => void;
   onStatus: (status: SyncStatus, info?: string) => void;
+}
+
+export function remoteUpdatedAtMs(updatedAt: unknown): number {
+  if (
+    updatedAt &&
+    typeof updatedAt === "object" &&
+    "toMillis" in updatedAt &&
+    typeof (updatedAt as { toMillis: () => number }).toMillis === "function"
+  ) {
+    return (updatedAt as { toMillis: () => number }).toMillis();
+  }
+  if (typeof updatedAt === "number" && Number.isFinite(updatedAt)) {
+    return updatedAt;
+  }
+  return 0;
 }
 
 const WRITE_DEBOUNCE_MS = 600;
@@ -118,7 +133,9 @@ export async function startSync(
       }
       const data = snap.data() as RemoteEnvelope;
       if (data.updatedBy === clientId) return;
-      if (data.state) callbacks.onRemote(data.state);
+      if (data.state) {
+        callbacks.onRemote(data.state, remoteUpdatedAtMs(data.updatedAt));
+      }
       if (navigator.onLine) goLive();
     },
     (err) => {

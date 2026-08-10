@@ -12,10 +12,12 @@ interface Props {
   onClose: () => void;
 }
 
+type DeleteTarget = { type: "one"; date: string } | { type: "all" };
+
 export default function RecordsModal({ open, onClose }: Props) {
-  const { state, setDate, removeRecord } = useAttendance();
+  const { state, setDate, removeRecord, removeAllRecords } = useAttendance();
   const [busy, setBusy] = useState(false);
-  const [deletingDate, setDeletingDate] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [pwInput, setPwInput] = useState("");
   const [pwError, setPwError] = useState("");
 
@@ -48,14 +50,20 @@ export default function RecordsModal({ open, onClose }: Props) {
     onClose();
   };
 
-  const handleDelete = (d: string) => {
-    setDeletingDate(d);
+  const openDeleteOne = (d: string) => {
+    setDeleteTarget({ type: "one", date: d });
+    setPwInput("");
+    setPwError("");
+  };
+
+  const openDeleteAll = () => {
+    setDeleteTarget({ type: "all" });
     setPwInput("");
     setPwError("");
   };
 
   const cancelDelete = () => {
-    setDeletingDate(null);
+    setDeleteTarget(null);
     setPwInput("");
     setPwError("");
   };
@@ -65,7 +73,8 @@ export default function RecordsModal({ open, onClose }: Props) {
       setPwError("비밀번호가 올바르지 않습니다.");
       return;
     }
-    if (deletingDate) removeRecord(deletingDate);
+    if (deleteTarget?.type === "one") removeRecord(deleteTarget.date);
+    if (deleteTarget?.type === "all") removeAllRecords();
     cancelDelete();
   };
 
@@ -89,12 +98,20 @@ export default function RecordsModal({ open, onClose }: Props) {
       <div className="flex-1 overflow-y-auto px-4 py-3">
         <button
           onClick={handleDownload}
-          className="mb-3 w-full rounded-xl bg-emerald-500 py-3 text-sm font-bold text-white shadow disabled:opacity-50"
+          className="mb-2 w-full rounded-xl bg-emerald-500 py-3 text-sm font-bold text-white shadow disabled:opacity-50"
           disabled={dates.length === 0 || busy}
         >
           {busy
             ? "엑셀 생성 중..."
             : `엑셀(.xlsx)로 다운로드 — ${dates.length}개 날짜`}
+        </button>
+
+        <button
+          onClick={openDeleteAll}
+          className="mb-3 w-full rounded-xl border border-rose-200 bg-rose-50 py-2.5 text-sm font-semibold text-rose-600 disabled:opacity-50"
+          disabled={dates.length === 0}
+        >
+          엑셀 기록 전체 삭제
         </button>
 
         <div className="mb-2 text-sm font-semibold text-slate-700">
@@ -124,7 +141,7 @@ export default function RecordsModal({ open, onClose }: Props) {
                   </div>
                 </button>
                 <button
-                  onClick={() => handleDelete(d)}
+                  onClick={() => openDeleteOne(d)}
                   className="rounded-md px-2 py-1 text-[11px] text-rose-400 active:bg-rose-50"
                   aria-label="삭제"
                 >
@@ -153,7 +170,7 @@ export default function RecordsModal({ open, onClose }: Props) {
         </div>
       </div>
 
-      {deletingDate && (
+      {deleteTarget && (
         <div
           className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-6"
           onClick={cancelDelete}
@@ -163,11 +180,23 @@ export default function RecordsModal({ open, onClose }: Props) {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="text-sm font-bold text-slate-900">
-              기록 삭제 확인
+              {deleteTarget.type === "all"
+                ? "전체 기록 삭제 확인"
+                : "기록 삭제 확인"}
             </div>
             <div className="mt-1 text-[12px] text-slate-600">
-              {formatDateKorean(deletingDate)} 기록을 삭제하려면 비밀번호를
-              입력하세요. 되돌릴 수 없습니다.
+              {deleteTarget.type === "all" ? (
+                <>
+                  저장된 출석·헌금 기록 <b>전체 {dates.length}개 날짜</b>를
+                  삭제하려면 비밀번호를 입력하세요. 명단은 유지되며, 되돌릴 수
+                  없습니다.
+                </>
+              ) : (
+                <>
+                  {formatDateKorean(deleteTarget.date)} 기록을 삭제하려면
+                  비밀번호를 입력하세요. 되돌릴 수 없습니다.
+                </>
+              )}
             </div>
             <input
               type="password"

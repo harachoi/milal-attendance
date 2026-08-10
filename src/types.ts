@@ -46,6 +46,8 @@ export interface AttendanceState {
   records: Record<string, DayRecord>; // 날짜 -> 기록
   /** 로컬·원격 충돌 시 최신 데이터를 고르기 위한 수정 시각(ms) */
   updatedAt?: number;
+  /** 사용자가 삭제한 날짜 — 동기화 시 다시 살아나지 않게 함 */
+  deletedDates?: Record<string, number>;
 }
 
 export const emptyDayRecord = (): DayRecord => ({

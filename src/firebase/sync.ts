@@ -1,5 +1,6 @@
 import type { AttendanceState } from "../types";
 import { firebaseConfig, getWorkspaceCode } from "./config";
+import { mergeForUpload } from "../utils/mergeState";
 
 export type SyncStatus =
   | "disabled"
@@ -101,8 +102,27 @@ export async function startSync(
     try {
       pendingWrite = false;
       callbacks.onStatus("saving", wsCode);
+
+      // 업로드 직전 서버 상태와 합쳐, 빈/적은 기록으로 서버를 덮어쓰지 않음
+      let toWrite = state;
+      try {
+        const snap = await fsMod.getDoc(ref);
+        if (snap.exists()) {
+          const data = snap.data() as RemoteEnvelope;
+          if (data.state) {
+            toWrite = mergeForUpload(
+              data.state,
+              state,
+              remoteUpdatedAtMs(data.updatedAt),
+            );
+          }
+        }
+      } catch (err) {
+        console.warn("[sync] pre-write merge skipped", err);
+      }
+
       const envelope: RemoteEnvelope = {
-        state,
+        state: toWrite,
         updatedBy: clientId,
         updatedAt: fsMod.serverTimestamp(),
       };

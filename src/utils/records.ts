@@ -25,6 +25,7 @@ export function hasSavedDayData(
   state: AttendanceState,
   date: string,
 ): boolean {
+  if (state.deletedDates?.[date]) return false;
   const rec = state.records[date];
   if (!rec) return false;
   const youth = countYouthPresent(state, rec);
@@ -37,7 +38,8 @@ export function listSavedRecordDates(
   state: AttendanceState,
   order: "asc" | "desc" = "desc",
 ): string[] {
+  const deleted = state.deletedDates ?? {};
   return Object.keys(state.records)
-    .filter((d) => hasSavedDayData(state, d))
+    .filter((d) => !deleted[d] && hasSavedDayData(state, d))
     .sort((a, b) => (order === "asc" ? a.localeCompare(b) : b.localeCompare(a)));
 }

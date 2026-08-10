@@ -20,6 +20,14 @@ import { emptyDayRecord } from "../types";
 import { INITIAL_STATE } from "../data/initialData";
 import { firebaseEnabled, getWorkspaceCode } from "../firebase/config";
 import type { SyncStatus } from "../firebase/sync";
+import {
+  findRicherBackup,
+  pushLocalBackup,
+} from "../utils/localBackup";
+import {
+  countSubstantialDays,
+  mergeAttendanceStates,
+} from "../utils/mergeState";
 
 /** Firebase 모듈은 firebaseEnabled일 때만 동적 로드 (번들 분리) */
 let syncModuleP: Promise<typeof import("../firebase/sync")> | null = null;
@@ -95,6 +103,7 @@ const normalizeState = (parsed: Partial<AttendanceState>): AttendanceState => {
     observers: parsed.observers ?? INITIAL_STATE.observers,
     records: parsed.records ?? {},
     updatedAt: parsed.updatedAt,
+    deletedDates: parsed.deletedDates ?? {},
   });
   // 예전 저장본에는 updatedAt이 없음 — 서버의 옛 명단이 덮어쓰지 않도록 현재 시각 부여
   if (!base.updatedAt) return { ...base, updatedAt: Date.now() };
@@ -106,7 +115,13 @@ const loadFromStorage = (): AttendanceState => {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as AttendanceState;
-      return normalizeState(parsed);
+      let loaded = normalizeState(parsed);
+      // 현재 저장본이 비었는데 로컬 백업에 기록이 더 있으면 복원
+      const richer = findRicherBackup(loaded);
+      if (richer) {
+        loaded = mergeAttendanceStates(loaded, richer, richer.updatedAt ?? 0);
+      }
+      return loaded;
     }
     const legacyRaw = localStorage.getItem(LEGACY_KEY);
     if (legacyRaw) {
@@ -136,6 +151,7 @@ interface ContextValue {
   sync: SyncInfo;
   setDate: (d: string) => void;
   removeRecord: (d: string) => void;
+  removeAllRecords: () => void;
   setOffering: (n: number) => void;
   setNotes: (notes: Partial<DayRecord["notes"]>) => void;
 
@@ -221,6 +237,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      pushLocalBackup(state);
     } catch {
       // ignore
     }
@@ -242,22 +259,27 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
         .startSync(
           {
             onRemote: (remoteState, remoteUpdatedAtMs) => {
-              const localAt = stateRef.current.updatedAt ?? 0;
-              if (remoteUpdatedAtMs > 0 && remoteUpdatedAtMs < localAt) {
-                return;
-              }
-              fromRemoteRef.current = true;
+              const local = stateRef.current;
+              const merged = mergeAttendanceStates(
+                local,
+                remoteState,
+                remoteUpdatedAtMs,
+              );
+              // 로컬에만 있는 기록이 있으면 합친 결과를 다시 서버에 올려 보호
+              const needPush =
+                countSubstantialDays(merged) >
+                countSubstantialDays(remoteState);
+
+              fromRemoteRef.current = !needPush;
               // 보고 있는 날짜(date)는 클라이언트 로컬 상태로 유지.
-              // 다른 기기가 다른 날짜를 보고 있더라도 내 화면은 바뀌지 않도록.
-              setState((prev) => {
-                const today = prev.date;
-                const records = { ...remoteState.records };
+              setState(() => {
+                const today = local.date;
+                const records = { ...merged.records };
                 if (!records[today]) records[today] = emptyDayRecord();
                 return {
-                  ...remoteState,
+                  ...merged,
                   date: today,
                   records,
-                  updatedAt: remoteUpdatedAtMs || remoteState.updatedAt,
                 };
               });
             },
@@ -286,7 +308,10 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
     setState((s) => {
       const records = { ...s.records };
       if (!records[d]) records[d] = emptyDayRecord();
-      return { ...s, date: d, records };
+      const deletedDates = { ...(s.deletedDates ?? {}) };
+      // 같은 날짜를 다시 선택하면 삭제 표시 해제
+      if (deletedDates[d]) delete deletedDates[d];
+      return { ...s, date: d, records, deletedDates };
     });
   }, []);
 
@@ -294,15 +319,37 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
     setState((s) => {
       const records = { ...s.records };
       delete records[d];
+      const deletedDates = { ...(s.deletedDates ?? {}), [d]: Date.now() };
       let date = s.date;
       if (date === d) {
         const remaining = Object.keys(records).sort();
-        date = remaining[remaining.length - 1] ?? new Date()
-          .toISOString()
-          .slice(0, 10);
+        date =
+          remaining[remaining.length - 1] ??
+          new Date().toISOString().slice(0, 10);
         if (!records[date]) records[date] = emptyDayRecord();
+        if (deletedDates[date]) delete deletedDates[date];
       }
-      return { ...s, date, records };
+      return { ...s, date, records, deletedDates };
+    });
+  }, []);
+
+  const removeAllRecords = useCallback(() => {
+    setState((s) => {
+      const now = Date.now();
+      const deletedDates: Record<string, number> = {
+        ...(s.deletedDates ?? {}),
+      };
+      for (const d of Object.keys(s.records)) {
+        deletedDates[d] = now;
+      }
+      const today = getTodayIso();
+      delete deletedDates[today];
+      return {
+        ...s,
+        date: today,
+        records: { [today]: emptyDayRecord() },
+        deletedDates,
+      };
     });
   }, []);
 
@@ -487,18 +534,20 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
         ...target.youth.map((m) => m.id),
         ...target.teachers.map((m) => m.id),
       ]);
-      const records: Record<string, DayRecord> = {};
-      for (const [d, rec] of Object.entries(s.records)) {
+      // 선택 날짜 출석만 정리 — 다른 날짜 기록은 건드리지 않음
+      const records = { ...s.records };
+      const cur = records[s.date];
+      if (cur) {
         let changed = false;
         const next: Record<string, true> = {};
-        for (const k of Object.keys(rec.presentIds)) {
+        for (const k of Object.keys(cur.presentIds)) {
           if (memberIds.has(k)) {
             changed = true;
             continue;
           }
           next[k] = true;
         }
-        records[d] = changed ? { ...rec, presentIds: next } : rec;
+        if (changed) records[s.date] = { ...cur, presentIds: next };
       }
       return {
         ...s,
@@ -523,15 +572,13 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
 
   const removeMember = useCallback((memberId: string) => {
     setState((s) => {
-      const records: Record<string, DayRecord> = {};
-      for (const [d, rec] of Object.entries(s.records)) {
-        if (!rec.presentIds[memberId]) {
-          records[d] = rec;
-          continue;
-        }
-        const next = { ...rec.presentIds };
+      // 선택 날짜 출석만 정리 — 다른 날짜 기록은 건드리지 않음
+      const records = { ...s.records };
+      const cur = records[s.date];
+      if (cur?.presentIds[memberId]) {
+        const next = { ...cur.presentIds };
         delete next[memberId];
-        records[d] = { ...rec, presentIds: next };
+        records[s.date] = { ...cur, presentIds: next };
       }
       return {
         ...s,
@@ -577,11 +624,15 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
       const key = rosterKeyOf(group);
       const presentKey = presentKeyOf(group) as keyof DayRecord;
       const list = s[key];
-      const records: Record<string, DayRecord> = {};
-      for (const [d, rec] of Object.entries(s.records)) {
-        const present = { ...(rec[presentKey] as Record<string, true>) };
-        if (present[id]) delete present[id];
-        records[d] = { ...rec, [presentKey]: present } as DayRecord;
+      // 선택 날짜만 정리 — 다른 날짜 기록은 건드리지 않음
+      const records = { ...s.records };
+      const cur = records[s.date];
+      if (cur) {
+        const present = { ...(cur[presentKey] as Record<string, true>) };
+        if (present[id]) {
+          delete present[id];
+          records[s.date] = { ...cur, [presentKey]: present } as DayRecord;
+        }
       }
       return {
         ...s,
@@ -632,6 +683,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
       sync,
       setDate,
       removeRecord,
+      removeAllRecords,
       setOffering,
       setNotes,
       toggleMember,
@@ -659,6 +711,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
       sync,
       setDate,
       removeRecord,
+      removeAllRecords,
       setOffering,
       setNotes,
       toggleMember,

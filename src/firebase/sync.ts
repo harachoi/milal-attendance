@@ -134,11 +134,11 @@ export async function startSync(
     }
   };
 
-  const scheduleWrite = (state: AttendanceState) => {
+  const scheduleWrite = (_state: AttendanceState) => {
     pendingWrite = true;
     if (writeTimer) clearTimeout(writeTimer);
     writeTimer = setTimeout(() => {
-      if (!teardown && pendingWrite) void writeNow(state);
+      if (!teardown && pendingWrite) void writeNow(getCurrentState());
     }, WRITE_DEBOUNCE_MS);
   };
 

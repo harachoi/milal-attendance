@@ -105,8 +105,8 @@ const normalizeState = (parsed: Partial<AttendanceState>): AttendanceState => {
     updatedAt: parsed.updatedAt,
     deletedDates: parsed.deletedDates ?? {},
   });
-  // 예전 저장본에는 updatedAt이 없음 — 서버의 옛 명단이 덮어쓰지 않도록 현재 시각 부여
-  if (!base.updatedAt) return { ...base, updatedAt: Date.now() };
+  // updatedAt이 없으면 0으로 두어, 첫 동기화 때 서버 값이 이기게 함
+  if (!base.updatedAt) return { ...base, updatedAt: 0 };
   return base;
 };
 
@@ -265,23 +265,22 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
                 remoteState,
                 remoteUpdatedAtMs,
               );
-              // 로컬에만 있는 기록이 있으면 합친 결과를 다시 서버에 올려 보호
+              const viewingDate = local.date;
+              const records = { ...merged.records };
+              if (!records[viewingDate]) records[viewingDate] = emptyDayRecord();
+              const next = {
+                ...merged,
+                date: viewingDate,
+                records,
+              };
+              // 로컬에만 있는 과거 기록이 있으면 합친 결과를 서버에 보완
               const needPush =
-                countSubstantialDays(merged) >
+                countSubstantialDays(next) >
                 countSubstantialDays(remoteState);
 
-              fromRemoteRef.current = !needPush;
-              // 보고 있는 날짜(date)는 클라이언트 로컬 상태로 유지.
-              setState(() => {
-                const today = local.date;
-                const records = { ...merged.records };
-                if (!records[today]) records[today] = emptyDayRecord();
-                return {
-                  ...merged,
-                  date: today,
-                  records,
-                };
-              });
+              fromRemoteRef.current = true;
+              setState(() => next);
+              if (needPush) triggerSyncWriteAsync(next);
             },
             onStatus: (s) => setSyncStatus(s),
           },

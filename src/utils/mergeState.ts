@@ -1,5 +1,4 @@
 import type { AttendanceState, DayRecord } from "../types";
-import { emptyDayRecord } from "../types";
 
 /** 하루 기록이 얼마나 '알차게' 채워졌는지 — 빈 기록으로 덮이지 않게 비교용 */
 export function dayRecordScore(rec: DayRecord | undefined): number {
@@ -47,45 +46,24 @@ function mergeDeletedDates(
 }
 
 /**
- * 선택 날짜만 로컬 기준으로 갱신하고,
- * 그 외 '이미 기록된' 날짜는 로컬 값을 그대로 고정합니다.
- * (로컬에 없는 날짜만 원격에서 새로 받을 수 있음)
+ * 더 최신 쪽 날짜 기록을 쓰고, 최신 쪽에 없는 날짜만 반대쪽에서 보완합니다.
+ * (빈 기기가 이미 있는 기록을 지우지 않게)
  */
-function mergeRecordsFrozen(
+function mergeRecordsLastWriteWins(
   local: Record<string, DayRecord>,
   remote: Record<string, DayRecord>,
   deleted: Record<string, number>,
-  selectedDate: string,
+  preferRemote: boolean,
 ): Record<string, DayRecord> {
   const dates = new Set([...Object.keys(local), ...Object.keys(remote)]);
   const out: Record<string, DayRecord> = {};
+  const newer = preferRemote ? remote : local;
+  const older = preferRemote ? local : remote;
 
   for (const d of dates) {
     if (deleted[d]) continue;
-
-    const localRec = local[d];
-    const remoteRec = remote[d];
-
-    if (d === selectedDate) {
-      // 선택 중인 날짜만 로컬 편집을 우선
-      out[d] = localRec ?? remoteRec ?? emptyDayRecord();
-      continue;
-    }
-
-    // 이미 로컬에 의미 있는 기록이 있으면 절대 변경하지 않음
-    if (dayRecordScore(localRec) > 0) {
-      out[d] = localRec!;
-      continue;
-    }
-
-    // 로컬에 기록이 없을 때만 원격(또는 빈 로컬) 채택
-    if (dayRecordScore(remoteRec) > 0) {
-      out[d] = remoteRec!;
-      continue;
-    }
-
-    if (localRec) out[d] = localRec;
-    else if (remoteRec) out[d] = remoteRec;
+    if (newer[d]) out[d] = newer[d];
+    else if (older[d]) out[d] = older[d];
   }
 
   return out;
@@ -93,8 +71,8 @@ function mergeRecordsFrozen(
 
 /**
  * 원격·로컬을 합칩니다.
- * - 선택 날짜 외 기존 기록 날짜는 로컬 고정
- * - 명단은 더 최신(updatedAt) 쪽을 쓰되, 급격한 축소는 막음
+ * - 더 최근(updatedAt) 쪽 출석/명단을 모든 기기에 그대로 반영
+ * - 최신 쪽에 없는 날짜·명단 급감은 로컬에서 보완/보호
  */
 export function mergeAttendanceStates(
   local: AttendanceState,
@@ -103,26 +81,26 @@ export function mergeAttendanceStates(
 ): AttendanceState {
   const localAt = local.updatedAt ?? 0;
   const remoteAt = remoteUpdatedAtMs || remote.updatedAt || 0;
-  const preferRemoteRoster = remoteAt > localAt;
+  const preferRemote = remoteAt > localAt;
 
   const localCount = countMemberRoster(local);
   const remoteCount = countMemberRoster(remote);
   const rosterCollapse =
-    preferRemoteRoster &&
+    preferRemote &&
     remoteCount > 0 &&
     localCount > remoteCount * 1.25 &&
     localCount - remoteCount >= 10;
 
-  const useRemoteRoster = preferRemoteRoster && !rosterCollapse;
+  const useRemoteRoster = preferRemote && !rosterCollapse;
   const deletedDates = mergeDeletedDates(
     local.deletedDates,
     remote.deletedDates,
   );
-  const records = mergeRecordsFrozen(
+  const records = mergeRecordsLastWriteWins(
     local.records ?? {},
     remote.records ?? {},
     deletedDates,
-    local.date,
+    preferRemote,
   );
 
   return {
@@ -135,35 +113,34 @@ export function mergeAttendanceStates(
     observers: useRemoteRoster ? remote.observers : local.observers,
     records,
     deletedDates,
-    updatedAt: Math.max(localAt, remoteAt, Date.now()),
+    updatedAt: Math.max(localAt, remoteAt),
   };
 }
 
-/** 업로드 전: 선택 날짜·기존 로컬 기록은 유지하고, 없는 날짜만 서버에서 보완 */
+/** 업로드 전: 최신 쪽을 쓰되, 빈/낡은 로컬이 서버의 알찬 기록을 덮지 않게 합니다. */
 export function mergeForUpload(
   remote: AttendanceState | null | undefined,
   local: AttendanceState,
   remoteUpdatedAtMs = 0,
 ): AttendanceState {
   if (!remote) return local;
-  const merged = mergeAttendanceStates(local, remote, remoteUpdatedAtMs);
   const localAt = local.updatedAt ?? 0;
   const remoteAt = remoteUpdatedAtMs || remote.updatedAt || 0;
-
-  // 선택 날짜는 항상 로컬(지금 편집 중) 값
-  const records = { ...merged.records };
+  const merged = mergeAttendanceStates(local, remote, remoteUpdatedAtMs);
   const selected = local.date;
-  if (local.records[selected]) {
-    records[selected] = local.records[selected];
-  }
+  const records = { ...merged.records };
 
-  // 로컬에 이미 있던 기록 날짜는 업로드 시에도 그대로
-  for (const [d, rec] of Object.entries(local.records ?? {})) {
-    if (d === selected) continue;
-    if (dayRecordScore(rec) > 0) records[d] = rec;
-  }
+  const localDay = local.records?.[selected];
+  const remoteDay = remote.records?.[selected];
+  const localScore = dayRecordScore(localDay);
+  const remoteScore = dayRecordScore(remoteDay);
 
-  if (localAt >= remoteAt) {
+  if (localAt > remoteAt) {
+    if (localDay) records[selected] = localDay;
+    for (const [d, rec] of Object.entries(local.records ?? {})) {
+      if (d === selected) continue;
+      if (dayRecordScore(rec) > 0 && !records[d]) records[d] = rec;
+    }
     return {
       ...merged,
       teams: local.teams,
@@ -173,8 +150,21 @@ export function mergeForUpload(
       date: local.date,
       records,
       deletedDates: merged.deletedDates,
-      updatedAt: localAt || Date.now(),
+      updatedAt: localAt,
     };
+  }
+
+  // 원격이 같거나 더 최신 — 선택 날짜는 서버 값을 유지.
+  // 로컬에만 있는 다른 날짜는 보완해서 올립니다.
+  if (remoteDay) records[selected] = remoteDay;
+  else if (localDay && localScore > 0 && remoteScore === 0) {
+    records[selected] = localDay;
+  }
+  for (const [d, rec] of Object.entries(local.records ?? {})) {
+    if (d === selected) continue;
+    if (dayRecordScore(rec) > 0 && dayRecordScore(records[d]) === 0) {
+      records[d] = rec;
+    }
   }
 
   return { ...merged, records, date: local.date };

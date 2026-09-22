@@ -104,30 +104,57 @@ const normalizeState = (parsed: Partial<AttendanceState>): AttendanceState => {
     records: parsed.records ?? {},
     updatedAt: parsed.updatedAt,
     deletedDates: parsed.deletedDates ?? {},
+    deletedMemberIds: parsed.deletedMemberIds ?? {},
   });
   // updatedAt이 없으면 0으로 두어, 첫 동기화 때 서버 값이 이기게 함
   if (!base.updatedAt) return { ...base, updatedAt: 0 };
   return base;
 };
 
+/** 저장된 명단에 멤버 updatedAt이 없으면 state.updatedAt으로 채워, 초반 명단(시각 0)보다 우선되게 함 */
+function ensureMemberTimestamps(state: AttendanceState): AttendanceState {
+  const stamp = state.updatedAt ?? Date.now();
+  const stampOne = <T extends { updatedAt?: number }>(item: T): T =>
+    item.updatedAt ? item : { ...item, updatedAt: stamp };
+
+  return {
+    ...state,
+    teams: state.teams.map((t) => ({
+      ...stampOne(t),
+      youth: t.youth.map(stampOne),
+      teachers: t.teachers.map(stampOne),
+    })),
+    ministers: state.ministers.map(stampOne),
+    volunteerTeachers: state.volunteerTeachers.map(stampOne),
+    observers: state.observers.map(stampOne),
+  };
+}
+
 const loadFromStorage = (): AttendanceState => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as AttendanceState;
-      let loaded = normalizeState(parsed);
+      let loaded = ensureMemberTimestamps(normalizeState(parsed));
       // 현재 저장본이 비었는데 로컬 백업에 기록이 더 있으면 복원
       const richer = findRicherBackup(loaded);
       if (richer) {
-        loaded = mergeAttendanceStates(loaded, richer, richer.updatedAt ?? 0);
+        loaded = mergeAttendanceStates(
+          loaded,
+          ensureMemberTimestamps(normalizeState(richer)),
+          richer.updatedAt ?? 0,
+        );
       }
       return loaded;
     }
     const legacyRaw = localStorage.getItem(LEGACY_KEY);
     if (legacyRaw) {
       const legacy = JSON.parse(legacyRaw) as LegacyState;
-      return withTodayDate(migrateFromLegacy(legacy));
+      return ensureMemberTimestamps(
+        withTodayDate(migrateFromLegacy(legacy)),
+      );
     }
+    // 순수 초기값 — 멤버 시각을 찍지 않음 (서버의 수정된 명단이 이기도록)
     return withTodayDate(INITIAL_STATE);
   } catch {
     return withTodayDate(INITIAL_STATE);
@@ -395,16 +422,26 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
     (teamId: TeamId, role: Role, name: string) => {
       const trimmed = name.trim();
       if (!trimmed) return;
-      setState((s) => ({
-        ...s,
-        teams: s.teams.map((t) => {
-          if (t.id !== teamId) return t;
-          const newMember: Member = { id: newId("m"), name: trimmed };
-          return role === "youth"
-            ? { ...t, youth: [...t.youth, newMember] }
-            : { ...t, teachers: [...t.teachers, newMember] };
-        }),
-      }));
+      const now = Date.now();
+      setState((s) => {
+        const deletedMemberIds = { ...(s.deletedMemberIds ?? {}) };
+        const newMember: Member = {
+          id: newId("m"),
+          name: trimmed,
+          updatedAt: now,
+        };
+        // 같은 이름으로 다시 추가하면 이전 삭제 표시는 새 ID라 무관
+        return {
+          ...s,
+          deletedMemberIds,
+          teams: s.teams.map((t) => {
+            if (t.id !== teamId) return t;
+            return role === "youth"
+              ? { ...t, youth: [...t.youth, newMember], updatedAt: now }
+              : { ...t, teachers: [...t.teachers, newMember], updatedAt: now };
+          }),
+        };
+      });
     },
     [],
   );
@@ -412,30 +449,32 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
   const renameMember = useCallback((memberId: string, name: string) => {
     const trimmed = name.trim();
     if (!trimmed) return;
+    const now = Date.now();
     setState((s) => ({
       ...s,
       teams: s.teams.map((t) => ({
         ...t,
         youth: t.youth.map((mm) =>
-          mm.id === memberId ? { ...mm, name: trimmed } : mm,
+          mm.id === memberId ? { ...mm, name: trimmed, updatedAt: now } : mm,
         ),
         teachers: t.teachers.map((mm) =>
-          mm.id === memberId ? { ...mm, name: trimmed } : mm,
+          mm.id === memberId ? { ...mm, name: trimmed, updatedAt: now } : mm,
         ),
       })),
     }));
   }, []);
 
   const setMemberBold = useCallback((memberId: string, bold: boolean) => {
+    const now = Date.now();
     setState((s) => ({
       ...s,
       teams: s.teams.map((t) => ({
         ...t,
         youth: t.youth.map((mm) =>
-          mm.id === memberId ? { ...mm, bold } : mm,
+          mm.id === memberId ? { ...mm, bold, updatedAt: now } : mm,
         ),
         teachers: t.teachers.map((mm) =>
-          mm.id === memberId ? { ...mm, bold } : mm,
+          mm.id === memberId ? { ...mm, bold, updatedAt: now } : mm,
         ),
       })),
     }));
@@ -498,6 +537,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
     const trimmed = name.trim();
     if (!trimmed) return null;
     const id = newId("team");
+    const now = Date.now();
     setState((s) => {
       const used = new Set(s.teams.map((t) => t.color));
       const color =
@@ -507,7 +547,14 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
         ...s,
         teams: [
           ...s.teams,
-          { id, name: trimmed, color, youth: [], teachers: [] },
+          {
+            id,
+            name: trimmed,
+            color,
+            youth: [],
+            teachers: [],
+            updatedAt: now,
+          },
         ],
       };
     });
@@ -517,10 +564,11 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
   const renameTeam = useCallback((teamId: TeamId, name: string) => {
     const trimmed = name.trim();
     if (!trimmed) return;
+    const now = Date.now();
     setState((s) => ({
       ...s,
       teams: s.teams.map((t) =>
-        t.id === teamId ? { ...t, name: trimmed } : t,
+        t.id === teamId ? { ...t, name: trimmed, updatedAt: now } : t,
       ),
     }));
   }, []);
@@ -529,6 +577,11 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
     setState((s) => {
       const target = s.teams.find((t) => t.id === teamId);
       if (!target) return s;
+      const now = Date.now();
+      const deletedMemberIds = { ...(s.deletedMemberIds ?? {}) };
+      for (const m of [...target.youth, ...target.teachers]) {
+        deletedMemberIds[m.id] = now;
+      }
       const memberIds = new Set<string>([
         ...target.youth.map((m) => m.id),
         ...target.teachers.map((m) => m.id),
@@ -552,6 +605,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
         ...s,
         teams: s.teams.filter((t) => t.id !== teamId),
         records,
+        deletedMemberIds,
       };
     });
   }, []);
@@ -582,6 +636,10 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
       return {
         ...s,
         records,
+        deletedMemberIds: {
+          ...(s.deletedMemberIds ?? {}),
+          [memberId]: Date.now(),
+        },
         teams: s.teams.map((t) => ({
           ...t,
           youth: t.youth.filter((mm) => mm.id !== memberId),
@@ -594,10 +652,15 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
   const addExtra = useCallback((group: ExtraGroup, name: string) => {
     const trimmed = name.trim();
     if (!trimmed) return;
+    const now = Date.now();
     setState((s) => {
       const key = rosterKeyOf(group);
       const list = s[key];
-      const next: ExtraPerson = { id: newId("x"), name: trimmed };
+      const next: ExtraPerson = {
+        id: newId("x"),
+        name: trimmed,
+        updatedAt: now,
+      };
       return { ...s, [key]: [...list, next] } as AttendanceState;
     });
   }, []);
@@ -606,12 +669,15 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
     (group: ExtraGroup, id: string, name: string) => {
       const trimmed = name.trim();
       if (!trimmed) return;
+      const now = Date.now();
       setState((s) => {
         const key = rosterKeyOf(group);
         const list = s[key];
         return {
           ...s,
-          [key]: list.map((p) => (p.id === id ? { ...p, name: trimmed } : p)),
+          [key]: list.map((p) =>
+            p.id === id ? { ...p, name: trimmed, updatedAt: now } : p,
+          ),
         } as AttendanceState;
       });
     },
@@ -637,6 +703,10 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
         ...s,
         [key]: list.filter((p) => p.id !== id),
         records,
+        deletedMemberIds: {
+          ...(s.deletedMemberIds ?? {}),
+          [id]: Date.now(),
+        },
       } as AttendanceState;
     });
   }, []);

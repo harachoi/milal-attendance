@@ -1,4 +1,10 @@
-import type { AttendanceState, DayRecord } from "../types";
+import type {
+  AttendanceState,
+  DayRecord,
+  ExtraPerson,
+  Member,
+  Team,
+} from "../types";
 
 /** 하루 기록이 얼마나 '알차게' 채워졌는지 — 빈 기록으로 덮이지 않게 비교용 */
 export function dayRecordScore(rec: DayRecord | undefined): number {
@@ -34,20 +40,20 @@ export function countSubstantialDays(state: AttendanceState): number {
   ).length;
 }
 
-function mergeDeletedDates(
+function mergeDeletedMap(
   a?: Record<string, number>,
   b?: Record<string, number>,
 ): Record<string, number> {
   const out: Record<string, number> = { ...(a ?? {}) };
-  for (const [d, t] of Object.entries(b ?? {})) {
-    out[d] = Math.max(out[d] ?? 0, t);
+  for (const [k, t] of Object.entries(b ?? {})) {
+    out[k] = Math.max(out[k] ?? 0, t);
   }
   return out;
 }
 
 /**
  * 더 최신 쪽 날짜 기록을 쓰고, 최신 쪽에 없는 날짜만 반대쪽에서 보완합니다.
- * (빈 기기가 이미 있는 기록을 지우지 않게)
+ * (보고 있는 날짜 출석도 기기 간에 반영되게)
  */
 function mergeRecordsLastWriteWins(
   local: Record<string, DayRecord>,
@@ -69,10 +75,114 @@ function mergeRecordsLastWriteWins(
   return out;
 }
 
+type Named = { id: string; name: string; updatedAt?: number };
+
+/** 같은 ID면 updatedAt이 더 최신인 쪽 유지 (없으면 로컬 우선) */
+function pickNewerById<T extends Named>(local: T, remote: T): T {
+  const la = local.updatedAt ?? 0;
+  const ra = remote.updatedAt ?? 0;
+  if (ra > la) return remote;
+  return local;
+}
+
+function mergeMemberLists(
+  localList: Member[],
+  remoteList: Member[],
+  deletedMemberIds: Record<string, number>,
+): Member[] {
+  const remoteById = new Map(remoteList.map((m) => [m.id, m]));
+  const ids = new Set([
+    ...localList.map((m) => m.id),
+    ...remoteList.map((m) => m.id),
+  ]);
+  const out: Member[] = [];
+
+  for (const m of localList) {
+    if (deletedMemberIds[m.id]) continue;
+    const remote = remoteById.get(m.id);
+    out.push(remote ? pickNewerById(m, remote) : m);
+    ids.delete(m.id);
+  }
+  for (const id of ids) {
+    if (deletedMemberIds[id]) continue;
+    const remote = remoteById.get(id);
+    if (remote) out.push(remote);
+  }
+  return out;
+}
+
+function mergeExtraLists(
+  localList: ExtraPerson[],
+  remoteList: ExtraPerson[],
+  deletedMemberIds: Record<string, number>,
+): ExtraPerson[] {
+  const remoteById = new Map(remoteList.map((p) => [p.id, p]));
+  const ids = new Set([
+    ...localList.map((p) => p.id),
+    ...remoteList.map((p) => p.id),
+  ]);
+  const out: ExtraPerson[] = [];
+
+  for (const p of localList) {
+    if (deletedMemberIds[p.id]) continue;
+    const remote = remoteById.get(p.id);
+    out.push(remote ? pickNewerById(p, remote) : p);
+    ids.delete(p.id);
+  }
+  for (const id of ids) {
+    if (deletedMemberIds[id]) continue;
+    const remote = remoteById.get(id);
+    if (remote) out.push(remote);
+  }
+  return out;
+}
+
+/** 조·멤버를 ID 기준으로 합치고, 이름은 더 최신 updatedAt을 유지 */
+export function mergeTeamsByMemberId(
+  localTeams: Team[],
+  remoteTeams: Team[],
+  deletedMemberIds: Record<string, number>,
+): Team[] {
+  const remoteById = new Map(remoteTeams.map((t) => [t.id, t]));
+  const ids = new Set([
+    ...localTeams.map((t) => t.id),
+    ...remoteTeams.map((t) => t.id),
+  ]);
+  const out: Team[] = [];
+
+  const mergeOne = (local: Team | undefined, remote: Team | undefined): Team => {
+    if (local && !remote) return local;
+    if (!local && remote) return remote!;
+    const l = local!;
+    const r = remote!;
+    const la = l.updatedAt ?? 0;
+    const ra = r.updatedAt ?? 0;
+    const useRemoteMeta = ra > la;
+    return {
+      id: l.id,
+      name: useRemoteMeta ? r.name : l.name,
+      color: useRemoteMeta ? r.color : l.color,
+      updatedAt: Math.max(la, ra) || undefined,
+      youth: mergeMemberLists(l.youth, r.youth, deletedMemberIds),
+      teachers: mergeMemberLists(l.teachers, r.teachers, deletedMemberIds),
+    };
+  };
+
+  for (const t of localTeams) {
+    ids.delete(t.id);
+    out.push(mergeOne(t, remoteById.get(t.id)));
+  }
+  for (const id of ids) {
+    const remote = remoteById.get(id);
+    if (remote) out.push(mergeOne(undefined, remote));
+  }
+  return out;
+}
+
 /**
  * 원격·로컬을 합칩니다.
- * - 더 최근(updatedAt) 쪽 출석/명단을 모든 기기에 그대로 반영
- * - 최신 쪽에 없는 날짜·명단 급감은 로컬에서 보완/보호
+ * - 출석 기록: 더 최신(updatedAt) 쪽을 모든 기기에 반영, 없는 날짜만 보완
+ * - 명단: 멤버 ID + updatedAt으로 합침 (초반 이름이 최신 이름을 덮지 않음)
  */
 export function mergeAttendanceStates(
   local: AttendanceState,
@@ -83,19 +193,15 @@ export function mergeAttendanceStates(
   const remoteAt = remoteUpdatedAtMs || remote.updatedAt || 0;
   const preferRemote = remoteAt > localAt;
 
-  const localCount = countMemberRoster(local);
-  const remoteCount = countMemberRoster(remote);
-  const rosterCollapse =
-    preferRemote &&
-    remoteCount > 0 &&
-    localCount > remoteCount * 1.25 &&
-    localCount - remoteCount >= 10;
-
-  const useRemoteRoster = preferRemote && !rosterCollapse;
-  const deletedDates = mergeDeletedDates(
+  const deletedDates = mergeDeletedMap(
     local.deletedDates,
     remote.deletedDates,
   );
+  const deletedMemberIds = mergeDeletedMap(
+    local.deletedMemberIds,
+    remote.deletedMemberIds,
+  );
+
   const records = mergeRecordsLastWriteWins(
     local.records ?? {},
     remote.records ?? {},
@@ -103,16 +209,33 @@ export function mergeAttendanceStates(
     preferRemote,
   );
 
+  const teams = mergeTeamsByMemberId(
+    local.teams,
+    remote.teams,
+    deletedMemberIds,
+  );
+
   return {
     date: local.date,
-    teams: useRemoteRoster ? remote.teams : local.teams,
-    ministers: useRemoteRoster ? remote.ministers : local.ministers,
-    volunteerTeachers: useRemoteRoster
-      ? remote.volunteerTeachers
-      : local.volunteerTeachers,
-    observers: useRemoteRoster ? remote.observers : local.observers,
+    teams,
+    ministers: mergeExtraLists(
+      local.ministers,
+      remote.ministers,
+      deletedMemberIds,
+    ),
+    volunteerTeachers: mergeExtraLists(
+      local.volunteerTeachers,
+      remote.volunteerTeachers,
+      deletedMemberIds,
+    ),
+    observers: mergeExtraLists(
+      local.observers,
+      remote.observers,
+      deletedMemberIds,
+    ),
     records,
     deletedDates,
+    deletedMemberIds,
     updatedAt: Math.max(localAt, remoteAt),
   };
 }
@@ -143,13 +266,10 @@ export function mergeForUpload(
     }
     return {
       ...merged,
-      teams: local.teams,
-      ministers: local.ministers,
-      volunteerTeachers: local.volunteerTeachers,
-      observers: local.observers,
       date: local.date,
       records,
       deletedDates: merged.deletedDates,
+      deletedMemberIds: merged.deletedMemberIds,
       updatedAt: localAt,
     };
   }

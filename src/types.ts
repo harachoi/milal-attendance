@@ -8,6 +8,8 @@ export interface Member {
   id: string;
   name: string;
   bold?: boolean;
+  /** 이름/속성 수정 시각 — 동기화 시 더 최신 쪽을 유지 */
+  updatedAt?: number;
 }
 
 export interface Team {
@@ -16,11 +18,13 @@ export interface Team {
   color: string;
   youth: Member[];
   teachers: Member[];
+  updatedAt?: number;
 }
 
 export interface ExtraPerson {
   id: string;
   name: string;
+  updatedAt?: number;
 }
 
 /** 한 날짜에 해당하는 출석 기록 (체크 표시 + 헌금 + 메모) */
@@ -48,6 +52,8 @@ export interface AttendanceState {
   updatedAt?: number;
   /** 사용자가 삭제한 날짜 — 동기화 시 다시 살아나지 않게 함 */
   deletedDates?: Record<string, number>;
+  /** 삭제한 멤버/사역자 등 ID — 동기화로 다시 살아나지 않게 함 */
+  deletedMemberIds?: Record<string, number>;
 }
 
 export const emptyDayRecord = (): DayRecord => ({

@@ -25,9 +25,11 @@ import {
   pushLocalBackup,
 } from "../utils/localBackup";
 import {
+  countMemberRoster,
   countSubstantialDays,
   mergeAttendanceStates,
 } from "../utils/mergeState";
+import { dedupeRoster } from "../utils/dedupeRoster";
 
 /** Firebase 모듈은 firebaseEnabled일 때만 동적 로드 (번들 분리) */
 let syncModuleP: Promise<typeof import("../firebase/sync")> | null = null;
@@ -111,37 +113,18 @@ const normalizeState = (parsed: Partial<AttendanceState>): AttendanceState => {
   return base;
 };
 
-/** 저장된 명단에 멤버 updatedAt이 없으면 state.updatedAt으로 채워, 초반 명단(시각 0)보다 우선되게 함 */
-function ensureMemberTimestamps(state: AttendanceState): AttendanceState {
-  const stamp = state.updatedAt ?? Date.now();
-  const stampOne = <T extends { updatedAt?: number }>(item: T): T =>
-    item.updatedAt ? item : { ...item, updatedAt: stamp };
-
-  return {
-    ...state,
-    teams: state.teams.map((t) => ({
-      ...stampOne(t),
-      youth: t.youth.map(stampOne),
-      teachers: t.teachers.map(stampOne),
-    })),
-    ministers: state.ministers.map(stampOne),
-    volunteerTeachers: state.volunteerTeachers.map(stampOne),
-    observers: state.observers.map(stampOne),
-  };
-}
-
 const loadFromStorage = (): AttendanceState => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as AttendanceState;
-      let loaded = ensureMemberTimestamps(normalizeState(parsed));
+      let loaded = dedupeRoster(normalizeState(parsed));
       // 현재 저장본이 비었는데 로컬 백업에 기록이 더 있으면 복원
       const richer = findRicherBackup(loaded);
       if (richer) {
         loaded = mergeAttendanceStates(
           loaded,
-          ensureMemberTimestamps(normalizeState(richer)),
+          normalizeState(richer),
           richer.updatedAt ?? 0,
         );
       }
@@ -150,9 +133,7 @@ const loadFromStorage = (): AttendanceState => {
     const legacyRaw = localStorage.getItem(LEGACY_KEY);
     if (legacyRaw) {
       const legacy = JSON.parse(legacyRaw) as LegacyState;
-      return ensureMemberTimestamps(
-        withTodayDate(migrateFromLegacy(legacy)),
-      );
+      return withTodayDate(migrateFromLegacy(legacy));
     }
     // 순수 초기값 — 멤버 시각을 찍지 않음 (서버의 수정된 명단이 이기도록)
     return withTodayDate(INITIAL_STATE);
@@ -300,10 +281,11 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
                 date: viewingDate,
                 records,
               };
-              // 로컬에만 있는 과거 기록이 있으면 합친 결과를 서버에 보완
+              // 로컬에만 있는 과거 기록이 있거나 중복 명단이 정리됐으면 서버에도 반영
               const needPush =
                 countSubstantialDays(next) >
-                countSubstantialDays(remoteState);
+                  countSubstantialDays(remoteState) ||
+                countMemberRoster(next) !== countMemberRoster(remoteState);
 
               fromRemoteRef.current = true;
               setState(() => next);

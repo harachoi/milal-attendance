@@ -5,6 +5,7 @@ import type {
   Member,
   Team,
 } from "../types";
+import { dedupeRoster } from "./dedupeRoster";
 
 /** 하루 기록이 얼마나 '알차게' 채워졌는지 — 빈 기록으로 덮이지 않게 비교용 */
 export function dayRecordScore(rec: DayRecord | undefined): number {
@@ -98,10 +99,12 @@ function mergeMemberLists(
   const out: Member[] = [];
 
   for (const m of localList) {
+    ids.delete(m.id);
     if (deletedMemberIds[m.id]) continue;
     const remote = remoteById.get(m.id);
+    // 수정 시각이 없는 로컬 전용 항목은 앱 기본 명단 — 서버 명단에 끼워 넣지 않음
+    if (!remote && !m.updatedAt) continue;
     out.push(remote ? pickNewerById(m, remote) : m);
-    ids.delete(m.id);
   }
   for (const id of ids) {
     if (deletedMemberIds[id]) continue;
@@ -124,10 +127,11 @@ function mergeExtraLists(
   const out: ExtraPerson[] = [];
 
   for (const p of localList) {
+    ids.delete(p.id);
     if (deletedMemberIds[p.id]) continue;
     const remote = remoteById.get(p.id);
+    if (!remote && !p.updatedAt) continue;
     out.push(remote ? pickNewerById(p, remote) : p);
-    ids.delete(p.id);
   }
   for (const id of ids) {
     if (deletedMemberIds[id]) continue;
@@ -215,7 +219,7 @@ export function mergeAttendanceStates(
     deletedMemberIds,
   );
 
-  return {
+  return dedupeRoster({
     date: local.date,
     teams,
     ministers: mergeExtraLists(
@@ -237,7 +241,7 @@ export function mergeAttendanceStates(
     deletedDates,
     deletedMemberIds,
     updatedAt: Math.max(localAt, remoteAt),
-  };
+  });
 }
 
 /** 업로드 전: 최신 쪽을 쓰되, 빈/낡은 로컬이 서버의 알찬 기록을 덮지 않게 합니다. */
@@ -264,14 +268,14 @@ export function mergeForUpload(
       if (d === selected) continue;
       if (dayRecordScore(rec) > 0 && !records[d]) records[d] = rec;
     }
-    return {
+    return dedupeRoster({
       ...merged,
       date: local.date,
       records,
       deletedDates: merged.deletedDates,
       deletedMemberIds: merged.deletedMemberIds,
       updatedAt: localAt,
-    };
+    });
   }
 
   // 원격이 같거나 더 최신 — 선택 날짜는 서버 값을 유지.
@@ -287,5 +291,5 @@ export function mergeForUpload(
     }
   }
 
-  return { ...merged, records, date: local.date };
+  return dedupeRoster({ ...merged, records, date: local.date });
 }

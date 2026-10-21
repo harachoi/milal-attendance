@@ -6,6 +6,7 @@ import type {
   Team,
 } from "../types";
 import { dedupeRoster } from "./dedupeRoster";
+import { mergeDayRecords } from "./presence";
 
 /** 하루 기록이 얼마나 '알차게' 채워졌는지 — 빈 기록으로 덮이지 않게 비교용 */
 export function dayRecordScore(rec: DayRecord | undefined): number {
@@ -53,10 +54,9 @@ function mergeDeletedMap(
 }
 
 /**
- * 더 최신 쪽 날짜 기록을 쓰고, 최신 쪽에 없는 날짜만 반대쪽에서 보완합니다.
- * (보고 있는 날짜 출석도 기기 간에 반영되게)
+ * 날짜별로 출석을 사람 단위로 합칩니다. 한쪽에만 있는 날짜는 그대로 둡니다.
  */
-function mergeRecordsLastWriteWins(
+function mergeRecordsByPerson(
   local: Record<string, DayRecord>,
   remote: Record<string, DayRecord>,
   deleted: Record<string, number>,
@@ -64,19 +64,22 @@ function mergeRecordsLastWriteWins(
 ): Record<string, DayRecord> {
   const dates = new Set([...Object.keys(local), ...Object.keys(remote)]);
   const out: Record<string, DayRecord> = {};
-  const newer = preferRemote ? remote : local;
-  const older = preferRemote ? local : remote;
 
   for (const d of dates) {
     if (deleted[d]) continue;
-    if (newer[d]) out[d] = newer[d];
-    else if (older[d]) out[d] = older[d];
+    const merged = mergeDayRecords(local[d], remote[d], preferRemote);
+    if (local[d] || remote[d]) out[d] = merged;
   }
 
   return out;
 }
 
-type Named = { id: string; name: string; updatedAt?: number };
+type Named = {
+  id: string;
+  name: string;
+  updatedAt?: number;
+  nameUpdatedAt?: number;
+};
 
 /** 같은 ID면 updatedAt이 더 최신인 쪽 유지 (없으면 로컬 우선) */
 function pickNewerById<T extends Named>(local: T, remote: T): T {
@@ -84,6 +87,25 @@ function pickNewerById<T extends Named>(local: T, remote: T): T {
   const ra = remote.updatedAt ?? 0;
   if (ra > la) return remote;
   return local;
+}
+
+/** 이름은 이름을 실제로 바꾼 시각으로 비교해, 굵게/기타 수정이 이름을 되돌리지 않게 합니다. */
+function mergeNamedById<T extends Named>(local: T, remote: T): T {
+  const base = pickNewerById(local, remote);
+  const localNameAt = local.nameUpdatedAt ?? 0;
+  const remoteNameAt = remote.nameUpdatedAt ?? 0;
+  const nameSource =
+    localNameAt === 0 && remoteNameAt === 0
+      ? base
+      : remoteNameAt > localNameAt
+        ? remote
+        : local;
+  const nameAt = Math.max(localNameAt, remoteNameAt);
+  return {
+    ...base,
+    name: nameSource.name,
+    ...(nameAt > 0 ? { nameUpdatedAt: nameAt } : {}),
+  };
 }
 
 function mergeMemberLists(
@@ -104,7 +126,7 @@ function mergeMemberLists(
     const remote = remoteById.get(m.id);
     // 수정 시각이 없는 로컬 전용 항목은 앱 기본 명단 — 서버 명단에 끼워 넣지 않음
     if (!remote && !m.updatedAt) continue;
-    out.push(remote ? pickNewerById(m, remote) : m);
+    out.push(remote ? mergeNamedById(m, remote) : m);
   }
   for (const id of ids) {
     if (deletedMemberIds[id]) continue;
@@ -131,7 +153,7 @@ function mergeExtraLists(
     if (deletedMemberIds[p.id]) continue;
     const remote = remoteById.get(p.id);
     if (!remote && !p.updatedAt) continue;
-    out.push(remote ? pickNewerById(p, remote) : p);
+    out.push(remote ? mergeNamedById(p, remote) : p);
   }
   for (const id of ids) {
     if (deletedMemberIds[id]) continue;
@@ -164,9 +186,22 @@ export function mergeTeamsByMemberId(
     const useRemoteMeta = ra > la;
     return {
       id: l.id,
-      name: useRemoteMeta ? r.name : l.name,
+      name:
+        !l.nameUpdatedAt && !r.nameUpdatedAt
+          ? (useRemoteMeta ? r.name : l.name)
+          : (r.nameUpdatedAt ?? 0) > (l.nameUpdatedAt ?? 0)
+            ? r.name
+            : l.name,
+      ...(Math.max(l.nameUpdatedAt ?? 0, r.nameUpdatedAt ?? 0) > 0
+        ? {
+            nameUpdatedAt: Math.max(
+              l.nameUpdatedAt ?? 0,
+              r.nameUpdatedAt ?? 0,
+            ),
+          }
+        : {}),
       color: useRemoteMeta ? r.color : l.color,
-      updatedAt: Math.max(la, ra) || undefined,
+      ...(Math.max(la, ra) > 0 ? { updatedAt: Math.max(la, ra) } : {}),
       youth: mergeMemberLists(l.youth, r.youth, deletedMemberIds),
       teachers: mergeMemberLists(l.teachers, r.teachers, deletedMemberIds),
     };
@@ -185,8 +220,8 @@ export function mergeTeamsByMemberId(
 
 /**
  * 원격·로컬을 합칩니다.
- * - 출석 기록: 더 최신(updatedAt) 쪽을 모든 기기에 반영, 없는 날짜만 보완
- * - 명단: 멤버 ID + updatedAt으로 합침 (초반 이름이 최신 이름을 덮지 않음)
+ * - 출석 기록: 날짜마다 사람 단위로 합침 (조를 나눠 입력해도 유지)
+ * - 명단: 멤버 ID 기준으로 합치고, 이름은 nameUpdatedAt으로 별도 비교합니다.
  */
 export function mergeAttendanceStates(
   local: AttendanceState,
@@ -206,7 +241,7 @@ export function mergeAttendanceStates(
     remote.deletedMemberIds,
   );
 
-  const records = mergeRecordsLastWriteWins(
+  const records = mergeRecordsByPerson(
     local.records ?? {},
     remote.records ?? {},
     deletedDates,
@@ -244,52 +279,13 @@ export function mergeAttendanceStates(
   });
 }
 
-/** 업로드 전: 최신 쪽을 쓰되, 빈/낡은 로컬이 서버의 알찬 기록을 덮지 않게 합니다. */
+/** 업로드 전: 명단·날짜를 합치고, 출석은 사람 단위로 합칩니다. */
 export function mergeForUpload(
   remote: AttendanceState | null | undefined,
   local: AttendanceState,
   remoteUpdatedAtMs = 0,
 ): AttendanceState {
   if (!remote) return local;
-  const localAt = local.updatedAt ?? 0;
-  const remoteAt = remoteUpdatedAtMs || remote.updatedAt || 0;
   const merged = mergeAttendanceStates(local, remote, remoteUpdatedAtMs);
-  const selected = local.date;
-  const records = { ...merged.records };
-
-  const localDay = local.records?.[selected];
-  const remoteDay = remote.records?.[selected];
-  const localScore = dayRecordScore(localDay);
-  const remoteScore = dayRecordScore(remoteDay);
-
-  if (localAt > remoteAt) {
-    if (localDay) records[selected] = localDay;
-    for (const [d, rec] of Object.entries(local.records ?? {})) {
-      if (d === selected) continue;
-      if (dayRecordScore(rec) > 0 && !records[d]) records[d] = rec;
-    }
-    return dedupeRoster({
-      ...merged,
-      date: local.date,
-      records,
-      deletedDates: merged.deletedDates,
-      deletedMemberIds: merged.deletedMemberIds,
-      updatedAt: localAt,
-    });
-  }
-
-  // 원격이 같거나 더 최신 — 선택 날짜는 서버 값을 유지.
-  // 로컬에만 있는 다른 날짜는 보완해서 올립니다.
-  if (remoteDay) records[selected] = remoteDay;
-  else if (localDay && localScore > 0 && remoteScore === 0) {
-    records[selected] = localDay;
-  }
-  for (const [d, rec] of Object.entries(local.records ?? {})) {
-    if (d === selected) continue;
-    if (dayRecordScore(rec) > 0 && dayRecordScore(records[d]) === 0) {
-      records[d] = rec;
-    }
-  }
-
-  return dedupeRoster({ ...merged, records, date: local.date });
+  return dedupeRoster({ ...merged, date: local.date });
 }

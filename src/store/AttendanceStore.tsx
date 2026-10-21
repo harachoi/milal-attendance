@@ -30,6 +30,11 @@ import {
   mergeAttendanceStates,
 } from "../utils/mergeState";
 import { dedupeRoster } from "../utils/dedupeRoster";
+import {
+  PRESENT_KEYS,
+  stampPresence,
+  type PresentKey,
+} from "../utils/presence";
 
 /** Firebase 모듈은 firebaseEnabled일 때만 동적 로드 (번들 분리) */
 let syncModuleP: Promise<typeof import("../firebase/sync")> | null = null;
@@ -188,7 +193,7 @@ interface ContextValue {
 
 const Ctx = createContext<ContextValue | null>(null);
 
-const presentKeyOf = (group: ExtraGroup): keyof DayRecord =>
+const presentKeyOf = (group: ExtraGroup): Exclude<PresentKey, "presentIds"> =>
   group === "ministers"
     ? "ministersPresent"
     : group === "volunteerTeachers"
@@ -374,12 +379,9 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
 
   const toggleMember = useCallback((memberId: string) => {
     setState((s) =>
-      withDay(s, (day) => {
-        const next = { ...day.presentIds };
-        if (next[memberId]) delete next[memberId];
-        else next[memberId] = true;
-        return { ...day, presentIds: next };
-      }),
+      withDay(s, (day) =>
+        stampPresence(day, "presentIds", [memberId], !day.presentIds[memberId]),
+      ),
     );
   }, []);
 
@@ -387,14 +389,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
     (memberIds: string[], present: boolean) => {
       if (memberIds.length === 0) return;
       setState((s) =>
-        withDay(s, (day) => {
-          const next = { ...day.presentIds };
-          for (const id of memberIds) {
-            if (present) next[id] = true;
-            else delete next[id];
-          }
-          return { ...day, presentIds: next };
-        }),
+        withDay(s, (day) => stampPresence(day, "presentIds", memberIds, present)),
       );
     },
     [],
@@ -410,6 +405,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
         const newMember: Member = {
           id: newId("m"),
           name: trimmed,
+          nameUpdatedAt: now,
           updatedAt: now,
         };
         // 같은 이름으로 다시 추가하면 이전 삭제 표시는 새 ID라 무관
@@ -437,10 +433,14 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
       teams: s.teams.map((t) => ({
         ...t,
         youth: t.youth.map((mm) =>
-          mm.id === memberId ? { ...mm, name: trimmed, updatedAt: now } : mm,
+          mm.id === memberId
+            ? { ...mm, name: trimmed, nameUpdatedAt: now, updatedAt: now }
+            : mm,
         ),
         teachers: t.teachers.map((mm) =>
-          mm.id === memberId ? { ...mm, name: trimmed, updatedAt: now } : mm,
+          mm.id === memberId
+            ? { ...mm, name: trimmed, nameUpdatedAt: now, updatedAt: now }
+            : mm,
         ),
       })),
     }));
@@ -532,6 +532,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
           {
             id,
             name: trimmed,
+            nameUpdatedAt: now,
             color,
             youth: [],
             teachers: [],
@@ -550,7 +551,9 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
     setState((s) => ({
       ...s,
       teams: s.teams.map((t) =>
-        t.id === teamId ? { ...t, name: trimmed, updatedAt: now } : t,
+        t.id === teamId
+          ? { ...t, name: trimmed, nameUpdatedAt: now, updatedAt: now }
+          : t,
       ),
     }));
   }, []);
@@ -572,16 +575,12 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
       const records = { ...s.records };
       const cur = records[s.date];
       if (cur) {
-        let changed = false;
-        const next: Record<string, true> = {};
-        for (const k of Object.keys(cur.presentIds)) {
-          if (memberIds.has(k)) {
-            changed = true;
-            continue;
-          }
-          next[k] = true;
-        }
-        if (changed) records[s.date] = { ...cur, presentIds: next };
+        records[s.date] = stampPresence(
+          cur,
+          "presentIds",
+          [...memberIds],
+          false,
+        );
       }
       return {
         ...s,
@@ -609,12 +608,8 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
     setState((s) => {
       // 선택 날짜 출석만 정리 — 다른 날짜 기록은 건드리지 않음
       const records = { ...s.records };
-      const cur = records[s.date];
-      if (cur?.presentIds[memberId]) {
-        const next = { ...cur.presentIds };
-        delete next[memberId];
-        records[s.date] = { ...cur, presentIds: next };
-      }
+      const cur = records[s.date] ?? emptyDayRecord();
+      records[s.date] = stampPresence(cur, "presentIds", [memberId], false);
       return {
         ...s,
         records,
@@ -641,6 +636,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
       const next: ExtraPerson = {
         id: newId("x"),
         name: trimmed,
+        nameUpdatedAt: now,
         updatedAt: now,
       };
       return { ...s, [key]: [...list, next] } as AttendanceState;
@@ -658,7 +654,9 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
         return {
           ...s,
           [key]: list.map((p) =>
-            p.id === id ? { ...p, name: trimmed, updatedAt: now } : p,
+            p.id === id
+              ? { ...p, name: trimmed, nameUpdatedAt: now, updatedAt: now }
+              : p,
           ),
         } as AttendanceState;
       });
@@ -669,18 +667,12 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
   const removeExtra = useCallback((group: ExtraGroup, id: string) => {
     setState((s) => {
       const key = rosterKeyOf(group);
-      const presentKey = presentKeyOf(group) as keyof DayRecord;
+      const presentKey = presentKeyOf(group);
       const list = s[key];
       // 선택 날짜만 정리 — 다른 날짜 기록은 건드리지 않음
       const records = { ...s.records };
-      const cur = records[s.date];
-      if (cur) {
-        const present = { ...(cur[presentKey] as Record<string, true>) };
-        if (present[id]) {
-          delete present[id];
-          records[s.date] = { ...cur, [presentKey]: present } as DayRecord;
-        }
-      }
+      const cur = records[s.date] ?? emptyDayRecord();
+      records[s.date] = stampPresence(cur, presentKey, [id], false);
       return {
         ...s,
         [key]: list.filter((p) => p.id !== id),
@@ -694,23 +686,28 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const toggleExtra = useCallback((group: ExtraGroup, id: string) => {
-    const presentKey = presentKeyOf(group) as keyof DayRecord;
+    const presentKey = presentKeyOf(group);
     setState((s) =>
-      withDay(s, (day) => {
-        const present = { ...(day[presentKey] as Record<string, true>) };
-        if (present[id]) delete present[id];
-        else present[id] = true;
-        return { ...day, [presentKey]: present } as DayRecord;
-      }),
+      withDay(s, (day) =>
+        stampPresence(day, presentKey, [id], !day[presentKey][id]),
+      ),
     );
   }, []);
 
   const resetAttendance = useCallback(() => {
     setState((s) =>
-      withDay(s, () => ({
-        ...emptyDayRecord(),
-        notes: s.records[s.date]?.notes ?? {},
-      })),
+      withDay(s, (day) => {
+        let next: DayRecord = {
+          ...emptyDayRecord(),
+          notes: day.notes ?? {},
+          presenceRev: day.presenceRev,
+        };
+        for (const key of PRESENT_KEYS) {
+          const ids = Object.keys(day[key] ?? {});
+          if (ids.length > 0) next = stampPresence(next, key, ids, false);
+        }
+        return next;
+      }),
     );
   }, []);
 

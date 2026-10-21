@@ -94,13 +94,23 @@ function remapRecords(
       continue;
     }
     const next: Record<string, true> = { ...present };
+    const nextRev: Record<string, number> = { ...rec.presenceRev?.[key] };
+    let revChanged = false;
     for (const [from, to] of dropped) {
       if (next[from]) {
         delete next[from];
         next[to] = true;
       }
+      if (nextRev[from] != null) {
+        nextRev[to] = Math.max(nextRev[to] ?? 0, nextRev[from]);
+        delete nextRev[from];
+        revChanged = true;
+      }
     }
-    out[d] = { ...rec, [key]: next };
+    const presenceRev = revChanged
+      ? { ...rec.presenceRev, [key]: nextRev }
+      : rec.presenceRev;
+    out[d] = { ...rec, [key]: next, presenceRev };
   }
   return out;
 }

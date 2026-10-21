@@ -32,6 +32,20 @@ export function remoteUpdatedAtMs(updatedAt: unknown): number {
 
 const WRITE_DEBOUNCE_MS = 600;
 
+/** Firestore는 필드 값이 undefined이면 쓰기를 거절합니다. JSON처럼 해당 키를 빼 줍니다. */
+function stripUndefined<T>(value: T): T {
+  if (value === null || typeof value !== "object") return value;
+  if (Array.isArray(value)) {
+    return value.map((item) => stripUndefined(item)) as T;
+  }
+  const out: Record<string, unknown> = {};
+  for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+    if (nested === undefined) continue;
+    out[key] = stripUndefined(nested);
+  }
+  return out as T;
+}
+
 /** 클라이언트 인스턴스 ID — 자신이 보낸 변경은 무시 */
 const clientId =
   Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -56,7 +70,12 @@ export async function startSync(
   ]);
 
   const app = initializeApp(firebaseConfig);
-  const db = fsMod.getFirestore(app);
+  let db;
+  try {
+    db = fsMod.initializeFirestore(app, { ignoreUndefinedProperties: true });
+  } catch {
+    db = fsMod.getFirestore(app);
+  }
   const auth = authMod.getAuth(app);
 
   const wsCode = getWorkspaceCode();
@@ -103,10 +122,12 @@ export async function startSync(
       pendingWrite = false;
       callbacks.onStatus("saving", wsCode);
 
-      // 업로드 직전 서버 상태와 합쳐, 빈/적은 기록으로 서버를 덮어쓰지 않음
-      let toWrite = state;
-      try {
-        const snap = await fsMod.getDoc(ref);
+      // Firestore transaction: 여러 기기가 동시에 저장해도 읽은 뒤의 변경 사항을
+      // 다른 기기의 쓰기가 덮어쓰지 않도록, 읽기-병합-쓰기를 원자적으로 수행합니다.
+      // 읽기 실패 시 병합 없이 덮어쓰지 않고 실패 처리합니다.
+      await fsMod.runTransaction(db, async (transaction) => {
+        const snap = await transaction.get(ref);
+        let toWrite = state;
         if (snap.exists()) {
           const data = snap.data() as RemoteEnvelope;
           if (data.state) {
@@ -117,16 +138,13 @@ export async function startSync(
             );
           }
         }
-      } catch (err) {
-        console.warn("[sync] pre-write merge skipped", err);
-      }
-
-      const envelope: RemoteEnvelope = {
-        state: toWrite,
-        updatedBy: clientId,
-        updatedAt: fsMod.serverTimestamp(),
-      };
-      await fsMod.setDoc(ref, envelope, { merge: false });
+        const envelope: RemoteEnvelope = {
+          state: stripUndefined(toWrite),
+          updatedBy: clientId,
+          updatedAt: fsMod.serverTimestamp(),
+        };
+        transaction.set(ref, envelope, { merge: false });
+      });
       if (!teardown && navigator.onLine) goLive();
     } catch (err) {
       console.error("[sync] write failed", err);

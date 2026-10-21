@@ -8,6 +8,8 @@ export interface Member {
   id: string;
   name: string;
   bold?: boolean;
+  /** 이름 변경 시각 — 굵게 표시 등 다른 속성 변경과 분리해 동기화 */
+  nameUpdatedAt?: number;
   /** 이름/속성 수정 시각 — 동기화 시 더 최신 쪽을 유지 */
   updatedAt?: number;
 }
@@ -18,12 +20,16 @@ export interface Team {
   color: string;
   youth: Member[];
   teachers: Member[];
+  /** 조 이름 변경 시각 — 색상/멤버 변경과 분리 */
+  nameUpdatedAt?: number;
   updatedAt?: number;
 }
 
 export interface ExtraPerson {
   id: string;
   name: string;
+  /** 이름 변경 시각 — 다른 속성 변경과 분리 */
+  nameUpdatedAt?: number;
   updatedAt?: number;
 }
 
@@ -37,6 +43,13 @@ export interface DayRecord {
   notes: {
     teacherCounts?: string;
     newcomers?: string;
+  };
+  /** 사람별 마지막 출석 토글 시각 — 조를 나눠 입력해도 합치고, 해제는 더 최신 쪽이 이깁니다. */
+  presenceRev?: {
+    presentIds?: Record<string, number>;
+    ministersPresent?: Record<string, number>;
+    volunteerTeachersPresent?: Record<string, number>;
+    observersPresent?: Record<string, number>;
   };
 }
 
